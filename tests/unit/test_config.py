@@ -1,42 +1,31 @@
-import tomllib
+from pathlib import Path
 
-import pytest
-from pydantic import ValidationError
-
-from dehydrater.config import AppConfig, example_config
-
-_TASK = '[tasks.dehydrate]\nprovider = "dehydrate"'
+from dehydrater.config import Field, Settings, Task, env_name
 
 
-def _example_with_dehydrate_provider(provider: str) -> AppConfig:
-    text = example_config()
-    assert _TASK in text
-    return AppConfig.model_validate(
-        tomllib.loads(text.replace(_TASK, f'[tasks.dehydrate]\nprovider = "{provider}"'))
+def test_env_name() -> None:
+    assert env_name(Task.WRITE_NOTES, Field.KEY) == "DEHYDRATER_WRITE_NOTES_KEY"
+
+
+def test_lookup_order_is_env_then_files_then_default(tmp_path: Path) -> None:
+    project_env = tmp_path / ".env"
+    project_env.write_text(
+        "DEHYDRATER_DEHYDRATE_KEY=from-project\nDEHYDRATER_OUTLINE_KEY=from-project\n"
     )
+    user_env = tmp_path / "env"
+    user_env.write_text("DEHYDRATER_OUTLINE_KEY=from-user\nDEHYDRATER_OUTLINE_MODEL=ep-123\n")
+    settings = Settings({"DEHYDRATER_DEHYDRATE_KEY": "from-env"}, [project_env, user_env])
+
+    assert settings.task(Task.DEHYDRATE).key == "from-env"
+    assert settings.task(Task.OUTLINE).key == "from-project"
+    assert settings.task(Task.OUTLINE).model == "ep-123"
+    assert settings.lookup(Task.OUTLINE, Field.URL).source == "默认值"  # type: ignore[union-attr]
 
 
-def test_example_config_is_valid() -> None:
-    AppConfig.model_validate(tomllib.loads(example_config()))
+def test_keys_have_no_default_and_empty_counts_as_missing(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("DEHYDRATER_TRANSCRIBE_KEY=\n")
 
+    settings = Settings({}, [env_file, tmp_path / "missing-file"])
 
-def test_task_must_reference_existing_provider() -> None:
-    with pytest.raises(ValidationError, match="不存在的渠道"):
-        _example_with_dehydrate_provider("nowhere")
-
-
-def test_chat_task_cannot_use_asr_only_provider() -> None:
-    with pytest.raises(ValidationError, match="chat"):
-        _example_with_dehydrate_provider("transcribe")
-
-
-def test_used_providers_are_those_referenced_by_tasks() -> None:
-    config = AppConfig.model_validate(tomllib.loads(example_config()))
-    assert config.used_providers() == ["dehydrate", "outline", "transcribe", "write-notes"]
-
-
-def test_provider_names_must_be_identifiers() -> None:
-    text = example_config().replace("[providers.outline]", "[providers.Outline]")
-    text = text.replace('provider = "outline"', 'provider = "Outline"')
-    with pytest.raises(ValidationError, match="只能包含小写字母"):
-        AppConfig.model_validate(tomllib.loads(text))
+    assert settings.missing() == [env_name(task, Field.KEY) for task in Task]

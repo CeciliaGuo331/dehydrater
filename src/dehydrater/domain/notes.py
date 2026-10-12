@@ -39,7 +39,8 @@ class Outline(DomainModel):
 
 class NoteChapter(DomainModel):
     title: str
-    pages: tuple[int, int] | None
+    slides: str | None
+    """对应课件位置的描述，例如"调度.pdf 第 3–5 页"；课件之外的内容为 None。"""
     start: Seconds | None
     """该章讲解开始的时间；没有对应讲课内容时为 None。"""
     body: str

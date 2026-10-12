@@ -2,6 +2,7 @@
 
 import hashlib
 import tomllib
+from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 
@@ -35,45 +36,54 @@ class _LectureManifest(BaseModel):
     title: str
     date: date
     recording: Path
-    slides: Path | None = None
+    slides: list[Path] = []
 
 
 class Workspace:
     """工作区目录布局：
 
-    lecture.toml        输入清单（用户可编辑）
-    .cache/artifacts/   各阶段产物（JSON）
-    .cache/stages/      各阶段的缓存元数据
-    .cache/files/       各阶段的二进制中间文件（如音频）
-    raw.md              原始逐字稿
-    dehydrated.md       脱水逐字稿
-    notes.md            笔记
+    lecture.toml            输入清单（用户可编辑）
+    notes.md                笔记
+    dehydrated.md           脱水逐字稿
+    raw.md                  原始逐字稿
+    cache/
+        audio.mp3           从录音中提取的音频（送去语音识别的就是它）
+        dehydrater.log      运行日志
+        artifacts/          各阶段产物（JSON），如原始逐字稿、大纲
+        stages/             各阶段的缓存元数据：缓存键、耗时、token 用量
+        <阶段名>/           各阶段自己的中间文件，如脱水的分块结果
+    删除 cache/ 等于从头开始。
     """
 
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
 
     @classmethod
-    def create(
+    def prepare(
         cls,
         root: Path,
         *,
         title: str,
         lecture_date: date,
         recording: Path,
-        slides: Path | None = None,
+        slides: Sequence[Path] = (),
     ) -> "Workspace":
-        if (root / LECTURE_FILE).exists():
-            raise WorkspaceError(f"{root} 已经是一个工作区")
+        """新建工作区；已存在且处理的是同一个录音时沿用它（已完成的步骤不会重做）。"""
         workspace = cls(root)
+        if workspace.manifest_path.exists():
+            existing = workspace.resolve(workspace._read_manifest().recording).resolve()
+            if existing != recording.resolve():
+                raise WorkspaceError(
+                    f"{workspace.root} 已用于整理另一节课（{existing.name}），请换一个输出路径"
+                )
         manifest = _LectureManifest(
             title=title,
             date=lecture_date,
             recording=workspace.portable_path(recording),
-            slides=workspace.portable_path(slides) if slides else None,
+            slides=[workspace.portable_path(path) for path in slides],
         )
         workspace.root.mkdir(parents=True, exist_ok=True)
-        data = manifest.model_dump(mode="json", exclude_none=True)
+        data = manifest.model_dump(mode="json")
         workspace.manifest_path.write_text(tomli_w.dumps(data), encoding="utf-8")
         return workspace
 
@@ -83,11 +93,19 @@ class Workspace:
 
     @property
     def cache_dir(self) -> Path:
-        return self.root / ".cache"
+        return self.root / "cache"
+
+    @property
+    def audio_path(self) -> Path:
+        return self.cache_dir / "audio.mp3"
+
+    @property
+    def log_path(self) -> Path:
+        return self.cache_dir / "dehydrater.log"
 
     def files_dir(self, stage: str) -> Path:
-        """某个阶段专用的二进制文件目录。"""
-        return self.cache_dir / "files" / stage
+        """某个阶段自己的中间文件目录。"""
+        return self.cache_dir / stage
 
     def stage_meta_path(self, stage: str) -> Path:
         return self.cache_dir / "stages" / f"{stage}.json"
@@ -104,14 +122,17 @@ class Workspace:
     def load_lecture(self) -> Lecture:
         if not self.manifest_path.exists():
             raise WorkspaceError(f"{self.root} 不是工作区：找不到 {LECTURE_FILE}")
-        with self.manifest_path.open("rb") as f:
-            manifest = _LectureManifest.model_validate(tomllib.load(f))
+        manifest = self._read_manifest()
         return Lecture(
             title=manifest.title,
             date=manifest.date,
             recording=self._source_file(manifest.recording),
-            slides=self._source_file(manifest.slides) if manifest.slides else None,
+            slides=[self._source_file(path) for path in manifest.slides],
         )
+
+    def _read_manifest(self) -> _LectureManifest:
+        with self.manifest_path.open("rb") as f:
+            return _LectureManifest.model_validate(tomllib.load(f))
 
     def _source_file(self, path: Path) -> SourceFile:
         absolute = self.resolve(path)

@@ -1,5 +1,5 @@
 课程：{{ lecture.title }}
-本章：{{ chapter.title }}{% if chapter.pages %}（课件第 {{ chapter.pages[0] }}–{{ chapter.pages[1] }} 页）{% endif %}
+本章：{{ chapter.title }}{% if slides %}（课件 {{ slides }}）{% endif %}
 
 
 {% if pages %}

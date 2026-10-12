@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from dehydrater.adapters.audio_pyav import PyAVAudioExtractor
+from dehydrater.ports import NotAMediaFileError
 
 
 def _write_tone(path: Path, seconds: float, codec: str = "aac", rate: int = 44_100) -> None:
@@ -40,3 +41,18 @@ def test_extracts_mono_16k_mp3(tmp_path: Path, name: str, codec: str) -> None:
         assert result.format.name == "mp3"
         assert stream.codec_context.channels == 1
         assert stream.codec_context.sample_rate == 16_000
+
+
+def test_probe_reads_duration(tmp_path: Path) -> None:
+    recording = tmp_path / "lecture.m4a"
+    _write_tone(recording, seconds=3.0)
+
+    assert PyAVAudioExtractor().probe(recording).duration == pytest.approx(3.0, abs=0.1)
+
+
+def test_probe_rejects_non_media_file(tmp_path: Path) -> None:
+    document = tmp_path / "notes.txt"
+    document.write_text("不是音频")
+
+    with pytest.raises(NotAMediaFileError):
+        PyAVAudioExtractor().probe(document)

@@ -10,9 +10,9 @@ dependencies = [
     "av>=14",
     "httpx>=0.28",
     "jinja2>=3.1",
-    "keyring>=25.7.0",
     "openai>=1.80",
     "platformdirs>=4.3",
+    "prompt-toolkit>=3.0.53",
     "pydantic>=2.11",
     "pymupdf>=1.28.2",
     "python-dotenv>=1.2.4",
@@ -22,13 +22,15 @@ dependencies = [
 ]
 
 [project.scripts]
-dehydrater = "dehydrater.cli:app"
+dehydrater = "dehydrater.cli.app:main"
 
 [dependency-groups]
 dev = [
     "basedpyright>=1.29",
     "import-linter>=2.3",
     "numpy>=2.5.4",
+    "pexpect>=4.9.0",
+    "pyte>=0.8.2",
     "pytest>=8.4",
     "pytest-asyncio>=1.0",
     "ruff>=0.12",
@@ -62,6 +64,14 @@ reportUnknownVariableType = false
 reportUnknownArgumentType = false
 
 [[tool.basedpyright.executionEnvironments]]
+root = "tests/terminal"
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportUnknownParameterType = false
+reportMissingParameterType = false
+
+[[tool.basedpyright.executionEnvironments]]
 root = "tests/adapters"
 reportUnknownMemberType = false
 reportUnknownVariableType = false
@@ -81,10 +91,10 @@ name = "分层：上层可以依赖下层，反之不行"
 type = "layers"
 layers = [
     "dehydrater.cli",
+    "dehydrater.service",
     "dehydrater.bootstrap",
     "dehydrater.config",
     "dehydrater.pipeline | dehydrater.adapters",
-    "dehydrater.credentials",
     "dehydrater.ports",
     "dehydrater.domain",
 ]
@@ -93,4 +103,4 @@ layers = [
 name = "IO 与外部服务的库只能出现在 adapters 中"
 type = "forbidden"
 source_modules = ["dehydrater.domain", "dehydrater.ports", "dehydrater.pipeline"]
-forbidden_modules = ["av", "pymupdf", "openai", "httpx", "keyring"]
+forbidden_modules = ["av", "pymupdf", "openai", "httpx"]

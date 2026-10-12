@@ -8,23 +8,15 @@
 
 当前为 v0.1 功能验证版，只提供 CLI。计划见 [docs/plan-v0.1.md](docs/plan-v0.1.md)。
 
-## 使用
+## 快速上手
 
 ```bash
-uv sync
-uv run dehydrater config init          # 生成 ~/.config/dehydrater/config.toml，按需修改
-uv run dehydrater key list             # 每个渠道一把密钥，查看应填的变量名与当前来源
-# 填写密钥，三选一：环境变量 / .env 文件 / uv run dehydrater key set <渠道名>（系统钥匙串）
-uv run dehydrater config check
-
-uv run dehydrater init L03 -r 录像或录音.mp4 -s 课件.pdf --date 2026-10-12
-uv run dehydrater run L03              # 命中缓存的阶段会跳过
-uv run dehydrater run L03 --from dehydrate  # 从某个阶段起强制重跑
-uv run dehydrater run L03 --until transcribe
-uv run dehydrater status L03
+uv tool install git+https://github.com/<owner>/dehydrater
+dehydrater setup        # 首次使用：填写各项服务的接入地址、模型和 API Key
+dehydrater              # 交互式整理一节课
 ```
 
-NixOS 用户可以用 `nix develop` 进入开发环境。
+也可以复制 [`.env.example`](.env.example) 为 `.env` 来配置。脚本用法（`process`、`status`、`check`）、配置细节和常见问题见 **[使用指南](docs/usage.md)**。
 
 ## 开发
 

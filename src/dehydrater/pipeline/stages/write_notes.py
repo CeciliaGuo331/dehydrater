@@ -34,7 +34,7 @@ class _Body(BaseModel):
 
 class WriteNotesStage(Stage):
     name = "write_notes"
-    version = 2
+    version = 3
     inputs = (LECTURE, DECK, DEHYDRATED_TRANSCRIPT, OUTLINE)
     outputs = (NOTES,)
 
@@ -54,10 +54,12 @@ class WriteNotesStage(Stage):
 
         async def write(chapter: OutlineChapter) -> NoteChapter:
             nonlocal done
+            slides = deck.describe(*chapter.pages) if chapter.pages else None
             user_prompt = self._prompts.render(
                 "notes.user.j2",
                 lecture=ctx.read(LECTURE),
                 chapter=chapter,
+                slides=slides,
                 pages=_pages_of(deck, chapter),
                 paragraphs=_paragraphs_of(transcript, chapter),
             )
@@ -68,7 +70,7 @@ class WriteNotesStage(Stage):
             )
             done += 1
             ctx.report_progress(done, len(outline.chapters))
-            return _to_chapter(chapter, body.markdown, transcript)
+            return _to_chapter(chapter, slides, body.markdown, transcript)
 
         chapters = await asyncio.gather(*(write(chapter) for chapter in outline.chapters))
         ctx.write(
@@ -97,7 +99,7 @@ def _pages_of(deck: Deck, chapter: OutlineChapter) -> list[str]:
     if chapter.pages is None:
         return []
     first, last = chapter.pages
-    return [page.text for page in deck.pages if first <= page.index <= last]
+    return [page.text for page in deck.pages[first - 1 : last]]
 
 
 def _paragraphs_of(
@@ -119,7 +121,9 @@ def _parse_body(text: str, paragraph_count: int) -> _Body:
     return _Body(markdown=body)
 
 
-def _to_chapter(chapter: OutlineChapter, body: str, transcript: Transcript) -> NoteChapter:
+def _to_chapter(
+    chapter: OutlineChapter, slides: str | None, body: str, transcript: Transcript
+) -> NoteChapter:
     def timestamps(run: re.Match[str]) -> str:
         indices = sorted({int(index) for index in _CITATION.findall(run.group())})
         times = dict.fromkeys(format_timecode(transcript.segments[i].start) for i in indices)
@@ -128,7 +132,7 @@ def _to_chapter(chapter: OutlineChapter, body: str, transcript: Transcript) -> N
     starts = [transcript.segments[r.first].start for r in chapter.paragraphs]
     return NoteChapter(
         title=chapter.title,
-        pages=chapter.pages,
+        slides=slides,
         start=min(starts) if starts else None,
         body=_CITATION_RUN.sub(timestamps, body),
     )

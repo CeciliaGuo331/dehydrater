@@ -4,7 +4,7 @@
 # 课件
 
 {% for page in pages %}
-=== 第 {{ page.index }} 页 ===
+=== 第 {{ page.number }} 页（{{ page.source }} 第 {{ page.page }} 页）===
 {{ page.text }}
 
 {% endfor %}

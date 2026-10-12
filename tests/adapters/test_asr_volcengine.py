@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from dehydrater.adapters.asr_volcengine import (
-    VolcengineApi,
+    AsrNetworkError,
     VolcengineAsrError,
     VolcengineTranscriber,
 )
@@ -39,12 +39,13 @@ def audio(tmp_path: Path) -> Path:
     return path
 
 
-def _transcriber(api: VolcengineApi, handler: Handler) -> VolcengineTranscriber:
+def _transcriber(handler: Handler) -> VolcengineTranscriber:
     return VolcengineTranscriber(
+        base_url="https://asr.example.com/api/v3/auc/bigmodel/",
         api_key="secret",
         resource_id="volc.seedasr.auc",
-        api=api,
         poll_interval=0,
+        retry_delay=0,
         transport=httpx.MockTransport(handler),
     )
 
@@ -71,9 +72,7 @@ class _StandardServer:
 async def test_standard_submits_inline_audio_then_polls(audio: Path) -> None:
     server = _StandardServer(final=_respond("20000000", _OK_BODY))
 
-    transcript = await _transcriber(VolcengineApi.STANDARD, server).transcribe(
-        audio, TranscriptionHints(hotwords=["TLB"])
-    )
+    transcript = await _transcriber(server).transcribe(audio, TranscriptionHints(hotwords=["TLB"]))
 
     assert transcript.segments == _EXPECTED
     submit, *queries = server.requests
@@ -89,30 +88,49 @@ async def test_standard_raises_when_submit_is_rejected(audio: Path) -> None:
         return _respond("45000030", message="requested resource not granted")
 
     with pytest.raises(VolcengineAsrError, match=r"45000030.*not granted.*log-1"):
-        await _transcriber(VolcengineApi.STANDARD, handler).transcribe(audio, TranscriptionHints())
+        await _transcriber(handler).transcribe(audio, TranscriptionHints())
 
 
-async def test_flash_returns_in_one_request(audio: Path) -> None:
-    requests: list[httpx.Request] = []
+async def test_verify_accepts_valid_key_and_rejects_invalid_one() -> None:
+    def server(key_ok: bool) -> Handler:
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == "/api/v3/auc/bigmodel/query"
+            if key_ok:
+                return _respond("45000092", message="The task was not found")
+            return httpx.Response(401, headers={"X-Api-Status-Code": "45000010"})
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        return _respond("20000000", _OK_BODY)
+        return handler
 
-    transcript = await _transcriber(VolcengineApi.FLASH, handler).transcribe(
-        audio, TranscriptionHints()
-    )
-
-    assert transcript.segments == _EXPECTED
-    assert [r.url.path for r in requests] == ["/api/v3/auc/bigmodel/recognize/flash"]
-    assert "corpus" not in json.loads(requests[0].content)["request"]
+    await _transcriber(server(key_ok=True)).verify()
+    with pytest.raises(VolcengineAsrError, match="45000010"):
+        await _transcriber(server(key_ok=False)).verify()
 
 
 async def test_silent_audio_gives_empty_transcript(audio: Path) -> None:
     server = _StandardServer(final=_respond("20000003", message="silent"))
 
-    transcript = await _transcriber(VolcengineApi.STANDARD, server).transcribe(
-        audio, TranscriptionHints()
-    )
+    transcript = await _transcriber(server).transcribe(audio, TranscriptionHints())
 
     assert transcript.segments == []
+
+
+async def test_submit_is_retried_after_network_error(audio: Path) -> None:
+    server = _StandardServer(final=_respond("20000000", _OK_BODY))
+    failures = [httpx.ReadError("connection reset")]
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/submit") and failures:
+            raise failures.pop()
+        return server(request)
+
+    transcript = await _transcriber(flaky).transcribe(audio, TranscriptionHints())
+
+    assert transcript.segments == _EXPECTED
+
+
+async def test_persistent_network_error_names_the_phase(audio: Path) -> None:
+    def broken(_: httpx.Request) -> httpx.Response:
+        raise httpx.ReadError("")
+
+    with pytest.raises(AsrNetworkError, match=r"上传录音时网络连接出错（ReadError）.*3 次"):
+        await _transcriber(broken).transcribe(audio, TranscriptionHints())

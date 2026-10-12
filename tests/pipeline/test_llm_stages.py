@@ -45,7 +45,7 @@ def workspace(tmp_path: Path) -> Workspace:
     workspace = Workspace(tmp_path)
     store = ArtifactStore(workspace)
     recording = SourceFile(path=Path("r.mp3"), size=1, mtime_ns=1)
-    lecture = Lecture(title="进程调度", date=date(2026, 9, 30), recording=recording, slides=None)
+    lecture = Lecture(title="进程调度", date=date(2026, 9, 30), recording=recording, slides=[])
     store.write(LECTURE, lecture)
     store.write(RAW_TRANSCRIPT, _RAW)
     return workspace
@@ -83,7 +83,12 @@ async def test_dehydrate_reuses_chunk_results_when_forced(workspace: Workspace) 
     assert len(chat.calls) == 1
 
 
-_DECK = Deck(pages=[SlidePage(index=1, text="FCFS"), SlidePage(index=2, text="SJF")])
+_DECK = Deck(
+    pages=[
+        SlidePage(number=1, source="调度.pdf", page=1, text="FCFS"),
+        SlidePage(number=2, source="调度.pdf", page=2, text="SJF"),
+    ]
+)
 _OPENING: dict[str, object] = {
     "title": "开场",
     "first_page": None,
@@ -125,7 +130,7 @@ async def test_outline_maps_pages_and_paragraphs(notes_workspace: Workspace) -> 
     outline = ArtifactStore(notes_workspace).read(OUTLINE)
     assert [c.pages for c in outline.chapters] == [None, (1, 2)]
     assert outline.notices[0].at == 2.0
-    assert "=== 第 2 页 ===" in chat.calls[0][1].content
+    assert "=== 第 2 页（调度.pdf 第 2 页）===" in chat.calls[0][1].content
 
 
 async def test_outline_rejects_unassigned_paragraphs(notes_workspace: Workspace) -> None:
@@ -163,6 +168,7 @@ async def test_notes_replace_citations_with_timestamps(notes_workspace: Workspac
         "FCFS 按到达顺序调度`▶ 00:02 · 00:05`。",
     ]
     assert notes.chapters[1].start == 2.0
+    assert [c.slides for c in notes.chapters] == [None, "第 1–2 页"]
     assert chat.json_modes == [False, False]
 
 

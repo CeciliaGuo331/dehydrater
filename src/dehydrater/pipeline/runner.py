@@ -1,5 +1,6 @@
 """按顺序执行阶段，命中缓存的跳过，并通过事件汇报进度。"""
 
+import logging
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ from dehydrater.pipeline.events import (
 )
 from dehydrater.pipeline.stage import Stage, StageContext
 from dehydrater.pipeline.workspace import ArtifactStore, Workspace
+
+logger = logging.getLogger(__name__)
 
 
 class PipelineDefinitionError(Exception):
@@ -86,9 +89,16 @@ class Runner:
         if not (force or stage.always_run) and is_fresh(
             load_meta(meta_path), cache_key, stage, self._store
         ):
+            logger.info("阶段 %s：沿用上次结果（缓存键 %s）", stage.name, cache_key[:12])
             self._on_event(StageSkipped(stage.name))
             return
 
+        logger.info(
+            "阶段 %s：开始%s（缓存键 %s）",
+            stage.name,
+            "（强制重做）" if force else "",
+            cache_key[:12],
+        )
         self._on_event(StageStarted(stage.name))
         ctx = StageContext(
             stage,
@@ -101,6 +111,7 @@ class Runner:
         try:
             await stage.run(ctx)
         except Exception as error:
+            logger.exception("阶段 %s：失败，耗时 %.1f 秒", stage.name, time.monotonic() - started)
             self._on_event(StageFailed(stage.name, error))
             raise
         elapsed = time.monotonic() - started
@@ -111,6 +122,13 @@ class Runner:
             store=self._store,
             elapsed_seconds=elapsed,
             usage=ctx.usage,
+        )
+        logger.info(
+            "阶段 %s：完成，耗时 %.1f 秒，token %d/%d",
+            stage.name,
+            elapsed,
+            ctx.usage.prompt_tokens,
+            ctx.usage.completion_tokens,
         )
         self._on_event(StageFinished(stage.name, elapsed))
 

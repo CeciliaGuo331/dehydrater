@@ -1,11 +1,14 @@
 """让 LLM 按约定格式输出，校验不合格时把错误告诉模型，让它重写。"""
 
+import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from pydantic import BaseModel, ValidationError
 
 from dehydrater.ports import ChatMessage, ChatModel, TokenUsage
+
+logger = logging.getLogger(__name__)
 
 
 class StructuredOutputError(Exception):
@@ -34,7 +37,7 @@ async def complete_checked[T](
     conversation = list(messages)
     prompt_tokens = completion_tokens = 0
     error = ""
-    for _ in range(attempts):
+    for attempt in range(1, attempts + 1):
         reply = await chat.complete(conversation, json=json)
         prompt_tokens += reply.usage.prompt_tokens
         completion_tokens += reply.usage.completion_tokens
@@ -42,6 +45,8 @@ async def complete_checked[T](
             value = parse(reply.content)
         except InvalidReplyError as invalid:
             error = str(invalid)
+            logger.warning("模型输出不合格（第 %d/%d 次）：%s", attempt, attempts, error)
+            logger.debug("不合格的输出原文：%s", reply.content)
             conversation += [
                 ChatMessage("assistant", reply.content),
                 ChatMessage("user", f"上面的输出不符合要求：\n{error}\n请修正后重新完整输出。"),

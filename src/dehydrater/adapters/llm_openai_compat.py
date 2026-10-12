@@ -1,5 +1,7 @@
 import asyncio
 import json as jsonlib
+import logging
+import time
 from collections.abc import Mapping, Sequence
 from functools import cached_property
 
@@ -7,6 +9,8 @@ from openai import AsyncOpenAI, omit
 from openai.types.chat import ChatCompletionMessageParam
 
 from dehydrater.ports import ChatMessage, ChatReply, Fingerprint, TokenUsage
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAICompatibleChatModel:
@@ -48,8 +52,26 @@ class OpenAICompatibleChatModel:
             "extra_body": jsonlib.dumps(self._extra_body, sort_keys=True),
         }
 
+    async def verify(self) -> None:
+        # 用临时客户端并在返回前关闭：verify 常在独立的事件循环中调用，循环结束后不能再关连接
+        async with AsyncOpenAI(base_url=self._base_url, api_key=self._api_key) as client:
+            await client.chat.completions.create(
+                model=self._model,
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+                extra_body=self._extra_body or None,
+            )
+
     async def complete(self, messages: Sequence[ChatMessage], *, json: bool = False) -> ChatReply:
         async with self._slots:
+            started = time.monotonic()
+            logger.info(
+                "调用 %s：%d 条消息共 %d 字%s",
+                self._model,
+                len(messages),
+                sum(len(m.content) for m in messages),
+                "，JSON 模式" if json else "",
+            )
             response = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[_to_param(message) for message in messages],
@@ -60,6 +82,15 @@ class OpenAICompatibleChatModel:
                 extra_body=self._extra_body or None,
             )
         usage = response.usage
+        logger.info(
+            "%s 返回：耗时 %.1f 秒，token %s/%s，结束原因 %s，输出 %d 字",
+            self._model,
+            time.monotonic() - started,
+            usage.prompt_tokens if usage else "?",
+            usage.completion_tokens if usage else "?",
+            response.choices[0].finish_reason,
+            len(response.choices[0].message.content or ""),
+        )
         return ChatReply(
             content=response.choices[0].message.content or "",
             usage=TokenUsage(

@@ -1,4 +1,4 @@
-"""组合根：根据配置构造 adapters，注入到各阶段，组装成流水线。
+"""组合根：根据用户配置构造 adapters，注入到各阶段，组装成流水线。
 
 这是唯一同时认识 pipeline 和 adapters 的模块。
 """
@@ -9,20 +9,11 @@ from pathlib import Path
 
 from dotenv import find_dotenv
 
-from dehydrater.adapters.asr_openai_compat import OpenAICompatibleTranscriber
-from dehydrater.adapters.asr_volcengine import VolcengineApi, VolcengineTranscriber
+from dehydrater.adapters.asr_volcengine import VolcengineTranscriber
 from dehydrater.adapters.audio_pyav import PyAVAudioExtractor
-from dehydrater.adapters.keychain_keyring import SystemKeychain
 from dehydrater.adapters.llm_openai_compat import OpenAICompatibleChatModel
 from dehydrater.adapters.slides_pymupdf import PyMuPDFSlideReader
-from dehydrater.config import (
-    AppConfig,
-    OpenAICompatibleProvider,
-    TaskConfig,
-    VolcengineAsrProvider,
-    config_dir,
-)
-from dehydrater.credentials import SecretStore
+from dehydrater.config import Settings, Task, user_env_file
 from dehydrater.pipeline.events import PipelineEvent
 from dehydrater.pipeline.lecture import LecturePipeline
 from dehydrater.pipeline.stage import Stage
@@ -39,82 +30,69 @@ from dehydrater.pipeline.stages.transcribe import TranscribeStage
 from dehydrater.pipeline.stages.write_notes import WriteNotesStage
 from dehydrater.pipeline.templating import TemplateSet
 from dehydrater.pipeline.workspace import Workspace
-from dehydrater.ports import ChatModel, Transcriber
+from dehydrater.ports import AudioExtractor, ChatModel, Transcriber
+
+# 方舟的豆包模型默认开启深度思考：一句话的回答要 40 秒、上千个推理 token，本项目的任务都不需要
+_ARK_HOST = "ark.cn-beijing.volces.com"
+_ARK_EXTRA_BODY = {"thinking": {"type": "disabled"}}
+_LLM_CONCURRENCY = 4
 
 
-class _Adapters:
-    """按任务配置构造 adapter。"""
-
-    def __init__(self, config: AppConfig, secrets: SecretStore) -> None:
-        self._config = config
-        self._secrets = secrets
-
-    def transcriber(self, task: TaskConfig) -> Transcriber:
-        match self._config.provider_of(task):
-            case OpenAICompatibleProvider(base_url=base_url):
-                return OpenAICompatibleTranscriber(
-                    base_url=base_url, api_key=self._secret(task), model=task.model
-                )
-            case VolcengineAsrProvider(api=api):
-                return VolcengineTranscriber(
-                    api_key=self._secret(task), resource_id=task.model, api=VolcengineApi(api)
-                )
-
-    def chat_model(self, task: TaskConfig) -> ChatModel:
-        provider = self._config.provider_of(task)
-        # 配置校验已保证 CHAT 任务只会配到支持 CHAT 的渠道
-        assert isinstance(provider, OpenAICompatibleProvider)
-        return OpenAICompatibleChatModel(
-            base_url=provider.base_url,
-            api_key=self._secret(task),
-            model=task.model,
-            temperature=task.temperature,
-            max_tokens=task.max_tokens,
-            extra_body=task.extra_body,
-            max_concurrency=provider.max_concurrency,
-        )
-
-    def _secret(self, task: TaskConfig) -> str:
-        # 缺失的密钥由 CLI 在运行前用 missing_keys 统一检查；这里允许为空，便于 status 等命令使用
-        secret = self._secrets.get(task.provider)
-        return secret.value if secret else ""
+def load_settings() -> Settings:
+    """环境变量 → 当前目录向上找到的 .env → 用户配置目录下的 env 文件。"""
+    env_files = [Path(found)] if (found := find_dotenv(usecwd=True)) else []
+    env_files.append(user_env_file())
+    return Settings(os.environ, env_files)
 
 
-def build_secret_store() -> SecretStore:
-    """环境变量 → 当前目录向上找到的 .env → 配置目录下的 .env → 系统钥匙串。"""
-    dotenv_paths = [Path(found)] if (found := find_dotenv(usecwd=True)) else []
-    dotenv_paths.append(config_dir() / ".env")
-    return SecretStore(os.environ, dotenv_paths, SystemKeychain())
+def build_transcriber(settings: Settings) -> VolcengineTranscriber:
+    task = settings.task(Task.TRANSCRIBE)
+    return VolcengineTranscriber(base_url=task.url, api_key=task.key, resource_id=task.model)
 
 
-def missing_keys(config: AppConfig, secrets: SecretStore) -> list[str]:
-    """任务用到、但哪里都找不到密钥的渠道。"""
-    return [name for name in config.used_providers() if secrets.get(name) is None]
+def build_chat_model(settings: Settings, task_name: Task) -> OpenAICompatibleChatModel:
+    task = settings.task(task_name)
+    return OpenAICompatibleChatModel(
+        base_url=task.url,
+        api_key=task.key,
+        model=task.model,
+        temperature=None,
+        max_tokens=None,
+        extra_body=_ARK_EXTRA_BODY if _ARK_HOST in task.url else {},
+        max_concurrency=_LLM_CONCURRENCY,
+    )
 
 
-def build_stages(config: AppConfig, secrets: SecretStore) -> list[Stage]:
+def build_media_probe() -> AudioExtractor:
+    return PyAVAudioExtractor()
+
+
+def build_verifier(settings: Settings, task: Task) -> Transcriber | ChatModel:
+    if task == Task.TRANSCRIBE:
+        return build_transcriber(settings)
+    return build_chat_model(settings, task)
+
+
+def build_stages(settings: Settings) -> list[Stage]:
     """按依赖顺序排列的全部阶段。"""
-    adapters = _Adapters(config, secrets)
-    tasks = config.tasks
     prompts = TemplateSet("prompts")
     templates = TemplateSet("templates")
     return [
         ExtractAudioStage(PyAVAudioExtractor()),
         IngestSlidesStage(PyMuPDFSlideReader()),
-        TranscribeStage(adapters.transcriber(tasks.transcribe)),
+        TranscribeStage(build_transcriber(settings)),
         RenderRawStage(templates),
-        DehydrateStage(adapters.chat_model(tasks.dehydrate), prompts),
+        DehydrateStage(build_chat_model(settings, Task.DEHYDRATE), prompts),
         RenderDehydratedStage(templates),
-        OutlineStage(adapters.chat_model(tasks.outline), prompts),
-        WriteNotesStage(adapters.chat_model(tasks.write_notes), prompts),
+        OutlineStage(build_chat_model(settings, Task.OUTLINE), prompts),
+        WriteNotesStage(build_chat_model(settings, Task.WRITE_NOTES), prompts),
         RenderNotesStage(templates),
     ]
 
 
 def build_pipeline(
     workspace: Workspace,
-    config: AppConfig,
-    secrets: SecretStore,
+    settings: Settings,
     on_event: Callable[[PipelineEvent], None] = lambda _: None,
 ) -> LecturePipeline:
-    return LecturePipeline(workspace, build_stages(config, secrets), on_event)
+    return LecturePipeline(workspace, build_stages(settings), on_event)

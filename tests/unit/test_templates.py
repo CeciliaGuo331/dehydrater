@@ -10,7 +10,7 @@ _LECTURE = Lecture(
     title="进程调度",
     date=date(2026, 9, 30),
     recording=SourceFile(path=Path("r.mp3"), size=1, mtime_ns=1),
-    slides=None,
+    slides=[],
 )
 
 
@@ -29,8 +29,8 @@ def test_notes_render_chapters_with_pages_and_start_time() -> None:
     notes = LectureNotes(
         overview="概览",
         chapters=[
-            NoteChapter(title="FCFS", pages=(3, 5), start=65, body="正文"),
-            NoteChapter(title="答疑", pages=None, start=None, body="问答"),
+            NoteChapter(title="FCFS", slides="调度.pdf 第 3–5 页", start=65, body="正文"),
+            NoteChapter(title="答疑", slides=None, start=None, body="问答"),
         ],
         key_terms=[Term(term="FCFS", explanation="先来先服务")],
         notices=[Notice(text="周五交作业", at=5)],
@@ -40,7 +40,7 @@ def test_notes_render_chapters_with_pages_and_start_time() -> None:
 
     assert "- `00:05` 周五交作业" in text
     assert "## 1. FCFS" in text
-    assert "> 课件第 3–5 页 · 讲解从 `01:05` 开始" in text
+    assert "> 课件 调度.pdf 第 3–5 页 · 讲解从 `01:05` 开始" in text
     assert "## 2. 答疑\n\n问答" in text
     assert "| FCFS | 先来先服务 |" in text
 

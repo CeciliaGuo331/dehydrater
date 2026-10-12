@@ -21,8 +21,8 @@ class Lecture(DomainModel):
     """上课日期，用于把"下周三"之类的相对日期换算成绝对日期。"""
     recording: SourceFile
     """课堂录像或录音，任何带音轨的音视频文件均可。"""
-    slides: SourceFile | None
-    """PDF 课件，可选。"""
+    slides: list[SourceFile]
+    """PDF 课件，可以没有，也可以有多份。"""
 
 
 class AudioFile(DomainModel):

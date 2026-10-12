@@ -21,7 +21,7 @@
 
 - **不在本地跑任何模型**：ASR 和 LLM 全部走 API，本地只做解码这类 CPU 工作。
 - 只做 CLI，交互保持最简单。
-- 一次只处理一节课，输入是一个带音轨的音视频文件（录像或录音，任意常见格式），加上可选的一份 PDF 课件。
+- 一次只处理一节课，输入是一个带音轨的音视频文件（录像或录音，任意常见格式），加上零到多份 PDF 课件。
 - 代码可读性优先：分层清晰，有类型，可测试。
 
 ## 3. API
@@ -99,9 +99,7 @@ dehydrater/
 │   │   ├── audio_pyav.py
 │   │   ├── slides_pymupdf.py
 │   │   ├── asr_volcengine.py     # 豆包语音（私有协议）
-│   │   ├── asr_openai_compat.py  # 兼容 OpenAI 的 ASR，备用
-│   │   ├── llm_openai_compat.py  # 火山方舟等兼容 OpenAI 的 LLM
-│   │   └── keychain_keyring.py   # 系统钥匙串
+│   │   └── llm_openai_compat.py  # 火山方舟等兼容 OpenAI 的 LLM
 │   ├── pipeline/
 │   │   ├── artifacts.py          # 阶段之间传递的产物清单
 │   │   ├── workspace.py          # 目录布局、lecture.toml、产物读写
@@ -116,11 +114,10 @@ dehydrater/
 │   │   └── stages/               # 每个阶段一个文件
 │   ├── prompts/*.j2              # LLM 提示词，只放文本
 │   ├── templates/*.md.j2         # Markdown 输出模板
-│   ├── config.py                 # 渠道与任务配置
-│   ├── config.example.toml
-│   ├── credentials.py            # 密钥查找
+│   ├── config.py                 # 各任务的地址、模型、Key 及查找顺序
 │   ├── bootstrap.py              # 组合根：读配置，构造 adapters，注入各阶段
-│   └── cli.py
+│   ├── service.py                # 整理一节课的应用流程（CLI 与将来的 UI 共用）
+│   └── cli/                      # 交互式与脚本式命令行
 └── tests/
     ├── unit/                     # domain、config、模板，不访问网络
     ├── pipeline/                 # 调度、缓存；用预设回复的假模型测 LLM 阶段
@@ -130,58 +127,61 @@ dehydrater/
 **分层规则**（import-linter 强制，见 `pyproject.toml`）：
 
 ```text
-cli → bootstrap → config → pipeline | adapters → credentials → ports → domain
+cli → service → bootstrap → config → pipeline | adapters → ports → domain
 ```
 
 - 上层可以依赖下层，反之不行；`pipeline` 与 `adapters` 互不依赖。
-- `domain`、`ports`、`pipeline` 不得 import `av`、`pymupdf`、`openai`、`httpx`、`keyring`。
+- `domain`、`ports`、`pipeline` 不得 import `av`、`pymupdf`、`openai`、`httpx`。
 
 **编码约定**：basedpyright strict；依赖一律构造函数注入，无全局状态；第三方库的类型不越出 adapter；提示词写在 `.j2` 文件里。
 
 ## 7. 工作区与缓存
 
 ```text
-L03/
-├── lecture.toml        # 录音路径、标题、上课日期（用户可编辑）
-├── .cache/
-│   ├── artifacts/      # 各阶段产物（JSON）
-│   ├── stages/         # 各阶段缓存元数据：缓存键、耗时、token 用量
-│   └── files/          # 音频、LLM 分块和分章结果等中间文件
-├── raw.md
-├── dehydrated.md
-└── notes.md
+输出目录/
+├── lecture.toml        # 课堂名称、日期、录音与课件路径（用户可编辑）
+├── notes.md  dehydrated.md  raw.md
+└── cache/
+    ├── audio.mp3       # 提取的音频
+    ├── dehydrater.log  # 这节课的整理日志
+    ├── artifacts/      # 各阶段产物（JSON）
+    ├── stages/         # 各阶段缓存元数据：缓存键、耗时、token 用量
+    └── <阶段名>/       # 阶段自己的中间文件：dehydrate/chunks、write_notes/chapters
 ```
+
+日志：命令行入口配置 `logging`，模块各自 `logging.getLogger(__name__)`。整理日志写到 `cache/dehydrater.log`，全局日志写到用户日志目录（轮转）。httpx/httpcore 的 DEBUG 日志一并记录，用于排查网络问题；不记录 API Key（已用真实运行的日志核对过）。
 
 - 缓存键 = `sha256(阶段名, 版本号, 输入产物的摘要, 模型与参数, 提示词模板的摘要)`。改提示词只重跑下游 LLM 阶段，不会重新转写。
 - 脱水按块、笔记按章缓存：中断后再执行，只补齐没完成的部分；强制重跑时，内容和参数都没变的块直接复用。
 - 修改阶段的后处理逻辑（不涉及提示词和模型）时，把该阶段的 `version` 加一即可让产物重新生成，块级缓存仍然有效，不会重复调用模型。
 - 三份 `.md` 每次运行都会覆盖。需要手改的话，请先复制一份。
 
-## 8. CLI、配置与密钥
+## 8. CLI 与配置
+
+完整用法见 [docs/usage.md](usage.md)。
 
 ```bash
-dehydrater init L03 -r 录像.ts -s 课件.pdf --date 2026-09-30   # 创建工作区
-dehydrater run L03                    # 执行全部阶段（缓存命中的跳过）
-dehydrater run L03 --from dehydrate   # 从某阶段起强制重跑
-dehydrater run L03 --until transcribe # 执行完某阶段后停止
-dehydrater status L03                 # 各阶段状态、耗时、token 用量
-dehydrater config init | check        # 生成示例配置 / 校验配置与密钥
-dehydrater key list | set | unset     # 管理各渠道的密钥
+dehydrater --help       # 简短的使用说明
+dehydrater setup        # 交互式设置，验证连通性，帮用户保存（shell 启动文件 / 配置目录 / 只显示片段）
+dehydrater              # 交互式整理：课堂名称、课堂资料（一个录音 + 零到多个 PDF）、输出路径
+dehydrater process -n 名称 -i 录音 -i 课件.pdf -o 输出目录 [--date] [--redo 步骤]   # 脚本用
+dehydrater status 输出目录
+dehydrater check        # 检查设置完整性与连通性
 ```
 
-**配置**（`~/.config/dehydrater/config.toml`）分两层：渠道（怎么连接一个 API 账号，每个渠道一把密钥）和任务（`transcribe`、`dehydrate`、`outline`、`write_notes` 各用哪个渠道、模型、参数）。示例配置为每个任务单独定义了一个渠道；想共用密钥时让任务指向同一个渠道即可。
+**配置**：四个任务（`transcribe`、`dehydrate`、`outline`、`write_notes`）各有接入地址、模型、API Key 三项，变量名为 `DEHYDRATER_<任务>_{URL,MODEL,KEY}`。查找顺序：环境变量 → 当前目录向上的 `.env` → 用户配置目录下的 `env` → 内置默认值（只有地址和模型有）。地址为方舟时自动关闭深度思考。`.env.example` 有逐项说明。
 
-**密钥**按渠道名查找：环境变量 `DEHYDRATER_KEY_<渠道名>` → 当前目录向上的 `.env` → 配置目录下的 `.env` → 系统钥匙串（`key set` 写入）。`run` 和 `config check` 在开始前列出所有缺密钥的渠道。
+**命令行代码结构**：`cli/` 只负责交互和显示（`app.py` 命令定义、`lecture.py` 整理流程、`setup.py` 设置向导、`display.py` 进度界面、`shell_profile.py` 写入 shell 启动文件、`prompts.py` 输入与路径补全）；整理流程本身在 `service.py`，将来的 UI 复用它。面向用户的"步骤"与内部阶段的对应关系在 `pipeline/steps.py`。
 
 ## 9. 依赖
 
 | 用途 | 库 |
 | --- | --- |
 | 工程 | uv、ruff、basedpyright、import-linter、pytest、pytest-asyncio |
-| 数据、配置、密钥 | pydantic、platformdirs、keyring、python-dotenv |
+| 数据与配置 | pydantic、platformdirs、python-dotenv |
 | 媒体与文档 | av（PyAV，wheel 自带 FFmpeg）、pymupdf（AGPL，因此本项目为 AGPL-3.0） |
 | API | openai（兼容 OpenAI 的渠道，自带重试）、httpx（火山 ASR） |
-| 模板与 CLI | jinja2、typer、rich |
+| 模板与 CLI | jinja2、typer、rich、prompt_toolkit（交互输入与路径补全） |
 
 ## 10. 步骤
 

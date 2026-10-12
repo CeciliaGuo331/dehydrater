@@ -14,7 +14,4 @@ def test_reads_text_of_each_page(tmp_path: Path) -> None:
 
     pages = PyMuPDFSlideReader().read(pdf)
 
-    assert [(page.index, page.text) for page in pages] == [
-        (1, "Process Scheduling"),
-        (2, "Round Robin"),
-    ]
+    assert pages == ["Process Scheduling", "Round Robin"]

@@ -2,10 +2,13 @@
 
 import hashlib
 import json
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class JsonMemo:
@@ -22,8 +25,10 @@ class JsonMemo:
         encoded = json.dumps(material, sort_keys=True, ensure_ascii=False).encode()
         path = self._directory / f"{hashlib.sha256(encoded).hexdigest()}.json"
         if path.exists():
+            logger.debug("沿用已缓存的结果 %s", path.name)
             return model.model_validate_json(path.read_bytes())
         value = await compute()
+        logger.debug("已缓存结果 %s", path.name)
         self._directory.mkdir(parents=True, exist_ok=True)
         path.write_text(value.model_dump_json(indent=2), encoding="utf-8")
         return value

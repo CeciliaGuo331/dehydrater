@@ -1,5 +1,6 @@
 """阶段的定义，以及阶段运行时能访问的上下文。"""
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from pathlib import Path
@@ -31,6 +32,9 @@ class Stage(ABC):
 
     @abstractmethod
     async def run(self, ctx: "StageContext") -> None: ...
+
+
+logger = logging.getLogger(__name__)
 
 
 class UndeclaredArtifactError(Exception):
@@ -75,6 +79,7 @@ class StageContext:
         self._on_progress(done, total)
 
     def warn(self, message: str) -> None:
+        logger.warning("阶段 %s：%s", self._stage.name, message)
         self._on_warning(message)
 
     def record_usage(self, usage: TokenUsage) -> None:

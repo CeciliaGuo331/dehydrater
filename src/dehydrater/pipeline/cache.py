@@ -12,7 +12,7 @@ from dehydrater.ports import TokenUsage
 
 
 class StageMeta(BaseModel):
-    """一个阶段最近一次成功运行的记录，保存在 .cache/stages/<stage>.json。"""
+    """一个阶段最近一次成功运行的记录，保存在 cache/stages/<stage>.json。"""
 
     cache_key: str
     output_digests: dict[str, str]

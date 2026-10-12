@@ -1,129 +1,119 @@
-"""用户配置：渠道（怎么连某个 API 账号）与任务（每一步用哪个渠道、哪个模型）。"""
+"""用户配置：每个调用 API 的任务各有三项设置——接入地址、模型、API Key。
 
-import re
-import tomllib
+每项设置按以下顺序查找，先找到的生效：
+1. 环境变量，例如 DEHYDRATER_DEHYDRATE_KEY
+2. 当前目录向上找到的第一个 .env 文件
+3. 用户配置目录下的 env 文件（`dehydrater setup` 可以写入这里）
+4. 内置默认值（只有地址和模型有默认值，API Key 必须由用户提供）
+"""
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from enum import StrEnum
-from importlib import resources
 from pathlib import Path
-from typing import Annotated, ClassVar, Literal
 
 import platformdirs
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError, model_validator
+from dotenv import dotenv_values
+
+_ASR_URL = "https://openspeech.bytedance.com/api/v3/auc/bigmodel"
+_ARK_URL = "https://ark.cn-beijing.volces.com/api/v3"
 
 
-class ConfigError(Exception):
-    pass
+class Task(StrEnum):
+    TRANSCRIBE = "transcribe"
+    DEHYDRATE = "dehydrate"
+    OUTLINE = "outline"
+    WRITE_NOTES = "write_notes"
+
+    @property
+    def label(self) -> str:
+        return _LABELS[self]
 
 
-class Capability(StrEnum):
-    ASR = "asr"
-    CHAT = "chat"
+_LABELS = {
+    Task.TRANSCRIBE: "录音文件识别",
+    Task.DEHYDRATE: "逐字稿脱水",
+    Task.OUTLINE: "笔记大纲",
+    Task.WRITE_NOTES: "笔记撰写",
+}
 
 
-class _Strict(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+class Field(StrEnum):
+    URL = "url"
+    MODEL = "model"
+    KEY = "key"
 
 
-class OpenAICompatibleProvider(_Strict):
-    capabilities: ClassVar[frozenset[Capability]] = frozenset({Capability.ASR, Capability.CHAT})
-
-    kind: Literal["openai-compatible"]
-    base_url: str
-    max_concurrency: int = Field(default=4, ge=1)
-    """同时进行的请求数上限。"""
-
-
-class VolcengineAsrProvider(_Strict):
-    capabilities: ClassVar[frozenset[Capability]] = frozenset({Capability.ASR})
-
-    kind: Literal["volcengine-asr"]
-    api: Literal["standard", "flash"] = "standard"
-    """standard：提交任务后轮询；flash：极速版，同步返回。两者资源 ID 不同，需分别开通。"""
+_DEFAULTS: dict[tuple[Task, Field], str] = {
+    (Task.TRANSCRIBE, Field.URL): _ASR_URL,
+    (Task.TRANSCRIBE, Field.MODEL): "volc.seedasr.auc",
+    (Task.DEHYDRATE, Field.URL): _ARK_URL,
+    (Task.DEHYDRATE, Field.MODEL): "doubao-seed-2-1-lite-260915",
+    (Task.OUTLINE, Field.URL): _ARK_URL,
+    (Task.OUTLINE, Field.MODEL): "doubao-seed-2-1-pro-260915",
+    (Task.WRITE_NOTES, Field.URL): _ARK_URL,
+    (Task.WRITE_NOTES, Field.MODEL): "doubao-seed-2-1-pro-260915",
+}
 
 
-type ProviderConfig = Annotated[
-    OpenAICompatibleProvider | VolcengineAsrProvider, Field(discriminator="kind")
-]
+def env_name(task: Task, field: Field) -> str:
+    return f"DEHYDRATER_{task.upper()}_{field.upper()}"
 
 
-class TaskConfig(_Strict):
-    provider: str
-    model: str
-    """LLM 的模型名；火山 ASR 则为资源 ID，例如 volc.seedasr.auc。"""
-    temperature: float | None = None
-    max_tokens: int | None = None
-    extra_body: dict[str, JsonValue] = {}
-    """原样附加到请求体中的厂商参数，例如方舟的 {thinking = {type = "disabled"}}。"""
-
-
-class TasksConfig(_Strict):
-    transcribe: TaskConfig
-    dehydrate: TaskConfig
-    outline: TaskConfig
-    write_notes: TaskConfig
-
-    def required_capabilities(self) -> dict[str, tuple[TaskConfig, Capability]]:
-        return {
-            "transcribe": (self.transcribe, Capability.ASR),
-            "dehydrate": (self.dehydrate, Capability.CHAT),
-            "outline": (self.outline, Capability.CHAT),
-            "write_notes": (self.write_notes, Capability.CHAT),
-        }
-
-
-_PROVIDER_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
-
-
-class AppConfig(_Strict):
-    providers: dict[str, ProviderConfig]
-    """渠道名 → 渠道配置。渠道名同时用来查找该渠道的密钥，见 credentials.py。"""
-    tasks: TasksConfig
-
-    @model_validator(mode="after")
-    def _provider_names_are_identifiers(self) -> "AppConfig":
-        for name in self.providers:
-            if not _PROVIDER_NAME.fullmatch(name):
-                raise ValueError(f"渠道名 {name!r} 只能包含小写字母、数字、- 和 _")
-        return self
-
-    @model_validator(mode="after")
-    def _tasks_reference_capable_providers(self) -> "AppConfig":
-        for task_name, (task, capability) in self.tasks.required_capabilities().items():
-            provider = self.providers.get(task.provider)
-            if provider is None:
-                raise ValueError(f"任务 {task_name} 引用了不存在的渠道 {task.provider!r}")
-            if capability not in provider.capabilities:
-                raise ValueError(
-                    f"任务 {task_name} 需要 {capability} 能力，"
-                    f"但渠道 {task.provider!r}（{provider.kind}）不支持"
-                )
-        return self
-
-    def provider_of(self, task: TaskConfig) -> ProviderConfig:
-        return self.providers[task.provider]
-
-    def used_providers(self) -> list[str]:
-        """被任务引用到的渠道名。"""
-        return sorted({task.provider for task, _ in self.tasks.required_capabilities().values()})
+def default_value(task: Task, field: Field) -> str | None:
+    return _DEFAULTS.get((task, field))
 
 
 def config_dir() -> Path:
     return platformdirs.user_config_path("dehydrater")
 
 
-def default_config_path() -> Path:
-    return config_dir() / "config.toml"
+def user_env_file() -> Path:
+    return config_dir() / "env"
 
 
-def example_config() -> str:
-    return resources.files("dehydrater").joinpath("config.example.toml").read_text("utf-8")
+@dataclass(frozen=True)
+class Setting:
+    value: str
+    source: str
+    """人可读的来源：环境变量、某个文件路径或"默认值"。"""
 
 
-def load_config(path: Path) -> AppConfig:
-    if not path.exists():
-        raise ConfigError(f"找不到配置文件 {path}，可以先运行 `dehydrater config init`")
-    try:
-        with path.open("rb") as f:
-            return AppConfig.model_validate(tomllib.load(f))
-    except (tomllib.TOMLDecodeError, ValidationError) as error:
-        raise ConfigError(f"配置文件 {path} 有误：\n{error}") from error
+@dataclass(frozen=True)
+class TaskSettings:
+    url: str
+    model: str
+    key: str
+
+
+class Settings:
+    def __init__(self, env: Mapping[str, str], env_files: Sequence[Path]) -> None:
+        self._layers: list[tuple[str, Mapping[str, str | None]]] = [("环境变量", env)]
+        self._layers += [(str(path), dotenv_values(path)) for path in env_files if path.is_file()]
+
+    def lookup(self, task: Task, field: Field) -> Setting | None:
+        name = env_name(task, field)
+        for source, values in self._layers:
+            if value := values.get(name):
+                return Setting(value, source)
+        if default := default_value(task, field):
+            return Setting(default, "默认值")
+        return None
+
+    def task(self, task: Task) -> TaskSettings:
+        """缺失的项为空字符串；调用方应先用 missing() 检查。"""
+
+        def value(field: Field) -> str:
+            setting = self.lookup(task, field)
+            return setting.value if setting else ""
+
+        return TaskSettings(url=value(Field.URL), model=value(Field.MODEL), key=value(Field.KEY))
+
+    def missing(self) -> list[str]:
+        """还没有设置的项，以环境变量名表示。"""
+        return [
+            env_name(task, field)
+            for task in Task
+            for field in Field
+            if self.lookup(task, field) is None
+        ]
