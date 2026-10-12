@@ -22,15 +22,16 @@ def _write_tone(path: Path, seconds: float, rate: int = 44_100) -> None:
             container.mux(packet)
 
 
-def test_extracts_mono_16k_opus(tmp_path: Path) -> None:
+def test_extracts_mono_16k_mp3(tmp_path: Path) -> None:
     video = tmp_path / "lecture.mp4"
     _write_tone(video, seconds=2.0)
-    dest = tmp_path / "out" / "audio.ogg"
+    dest = tmp_path / "out" / "audio.mp3"
 
     extracted = PyAVAudioExtractor().extract(video, dest)
 
     assert extracted.duration == pytest.approx(2.0, abs=0.1)
     with av.open(dest) as result:
         stream = result.streams.audio[0]
-        assert stream.codec_context.name == "opus"
+        assert result.format.name == "mp3"
         assert stream.codec_context.channels == 1
+        assert stream.codec_context.sample_rate == 16_000

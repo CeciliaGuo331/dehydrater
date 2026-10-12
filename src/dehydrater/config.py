@@ -1,8 +1,7 @@
 """用户配置：渠道（怎么连某个 API 账号）与任务（每一步用哪个渠道、哪个模型）。"""
 
-import os
+import re
 import tomllib
-from collections.abc import Mapping
 from enum import StrEnum
 from importlib import resources
 from pathlib import Path
@@ -30,15 +29,14 @@ class OpenAICompatibleProvider(_Strict):
 
     kind: Literal["openai-compatible"]
     base_url: str
-    api_key_env: str
 
 
 class VolcengineAsrProvider(_Strict):
     capabilities: ClassVar[frozenset[Capability]] = frozenset({Capability.ASR})
 
     kind: Literal["volcengine-asr"]
-    api_key_env: str
-    """新版控制台的 API Key，对应请求头 X-Api-Key。"""
+    api: Literal["standard", "flash"] = "standard"
+    """standard：提交任务后轮询；flash：极速版，同步返回。两者资源 ID 不同，需分别开通。"""
 
 
 type ProviderConfig = Annotated[
@@ -68,9 +66,20 @@ class TasksConfig(_Strict):
         }
 
 
+_PROVIDER_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
+
+
 class AppConfig(_Strict):
     providers: dict[str, ProviderConfig]
+    """渠道名 → 渠道配置。渠道名同时用来查找该渠道的密钥，见 credentials.py。"""
     tasks: TasksConfig
+
+    @model_validator(mode="after")
+    def _provider_names_are_identifiers(self) -> "AppConfig":
+        for name in self.providers:
+            if not _PROVIDER_NAME.fullmatch(name):
+                raise ValueError(f"渠道名 {name!r} 只能包含小写字母、数字、- 和 _")
+        return self
 
     @model_validator(mode="after")
     def _tasks_reference_capable_providers(self) -> "AppConfig":
@@ -88,17 +97,17 @@ class AppConfig(_Strict):
     def provider_of(self, task: TaskConfig) -> ProviderConfig:
         return self.providers[task.provider]
 
-    def missing_secrets(self, env: Mapping[str, str] = os.environ) -> list[str]:
-        """任务用到的渠道中，尚未设置的密钥环境变量。"""
-        used = {task.provider for task, _ in self.tasks.required_capabilities().values()}
-        return sorted(
-            {self.providers[name].api_key_env for name in used}
-            - {key for key, value in env.items() if value}
-        )
+    def used_providers(self) -> list[str]:
+        """被任务引用到的渠道名。"""
+        return sorted({task.provider for task, _ in self.tasks.required_capabilities().values()})
+
+
+def config_dir() -> Path:
+    return platformdirs.user_config_path("dehydrater")
 
 
 def default_config_path() -> Path:
-    return platformdirs.user_config_path("dehydrater") / "config.toml"
+    return config_dir() / "config.toml"
 
 
 def example_config() -> str:

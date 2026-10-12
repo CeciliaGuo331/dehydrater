@@ -13,8 +13,8 @@
 ```bash
 uv sync
 uv run dehydrater config init          # 生成 ~/.config/dehydrater/config.toml，按需修改
-export ARK_API_KEY=...                 # 配置文件中 api_key_env 指定的环境变量
-export VOLC_SPEECH_API_KEY=...
+uv run dehydrater key list             # 每个渠道一把密钥，查看应填的变量名与当前来源
+# 填写密钥，三选一：环境变量 / .env 文件 / uv run dehydrater key set <渠道名>（系统钥匙串）
 uv run dehydrater config check
 
 uv run dehydrater init L03 --video lecture.mp4 --slides ch3.pdf --date 2026-10-12

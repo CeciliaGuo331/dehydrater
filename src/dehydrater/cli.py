@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from dehydrater.bootstrap import build_pipeline
+from dehydrater.bootstrap import build_pipeline, build_secret_store, missing_keys
 from dehydrater.config import (
     AppConfig,
     ConfigError,
@@ -17,6 +17,7 @@ from dehydrater.config import (
     example_config,
     load_config,
 )
+from dehydrater.credentials import KeychainUnavailableError, SecretStore, env_var_name
 from dehydrater.domain.timecode import format_timecode
 from dehydrater.pipeline.events import (
     PipelineEvent,
@@ -31,6 +32,8 @@ from dehydrater.pipeline.workspace import Workspace, WorkspaceError
 app = typer.Typer(help="把课堂录像和课件脱水成逐字稿、通知清单和讲义。", no_args_is_help=True)
 config_app = typer.Typer(help="管理配置文件。", no_args_is_help=True)
 app.add_typer(config_app, name="config")
+key_app = typer.Typer(help="管理各渠道的 API 密钥。", no_args_is_help=True)
+app.add_typer(key_app, name="key")
 
 console = Console()
 
@@ -78,9 +81,9 @@ def run(
 ) -> None:
     """执行流水线。命中缓存的阶段会被跳过。"""
     config = _load_config(config_path)
-    if missing := config.missing_secrets():
-        _fail(f"缺少以下环境变量：{', '.join(missing)}")
-    pipeline = build_pipeline(Workspace(workspace), config, on_event=_print_event)
+    secrets = build_secret_store()
+    _require_keys(config, secrets)
+    pipeline = build_pipeline(Workspace(workspace), config, secrets, on_event=_print_event)
     try:
         asyncio.run(pipeline.run(force_from=force_from, until=until))
     except WorkspaceError as error:
@@ -93,7 +96,7 @@ def run(
 @app.command()
 def status(workspace: WorkspaceArg, config_path: ConfigOption = None) -> None:
     """查看各阶段的缓存状态、耗时和 token 用量。"""
-    pipeline = build_pipeline(Workspace(workspace), _load_config(config_path))
+    pipeline = build_pipeline(Workspace(workspace), _load_config(config_path), build_secret_store())
     try:
         statuses = pipeline.status()
     except WorkspaceError as error:
@@ -125,11 +128,51 @@ def config_init(config_path: ConfigOption = None) -> None:
 
 @config_app.command("check")
 def config_check(config_path: ConfigOption = None) -> None:
-    """校验配置文件，并检查所需的密钥环境变量是否已设置。"""
+    """校验配置文件，并检查每个用到的渠道都能找到密钥。"""
     config = _load_config(config_path)
-    if missing := config.missing_secrets():
-        _fail(f"配置有效，但缺少以下环境变量：{', '.join(missing)}")
+    _require_keys(config, build_secret_store())
     console.print("配置有效，密钥均已设置。")
+
+
+@key_app.command("list")
+def key_list(config_path: ConfigOption = None) -> None:
+    """列出配置中各渠道的密钥来源（不显示密钥本身）。"""
+    config = _load_config(config_path)
+    secrets = build_secret_store()
+    table = Table("渠道", "环境变量名", "来源")
+    for name in config.providers:
+        secret = secrets.get(name)
+        source = f"{secret.source.value}（{secret.location}）" if secret else "[red]未设置[/red]"
+        table.add_row(name, env_var_name(name), source)
+    console.print(table)
+
+
+@key_app.command("set")
+def key_set(provider: Annotated[str, typer.Argument(help="渠道名，见 `key list`。")]) -> None:
+    """把某个渠道的密钥保存到系统钥匙串。输入时不回显。"""
+    value = typer.prompt(f"{provider} 的 API Key", hide_input=True)
+    try:
+        build_secret_store().save_to_keychain(provider, value)
+    except KeychainUnavailableError as error:
+        _fail(f"{error}\n可以改为设置环境变量或在 .env 中写入 {env_var_name(provider)}。")
+    console.print(f"已保存到系统钥匙串：{provider}")
+
+
+@key_app.command("unset")
+def key_unset(provider: Annotated[str, typer.Argument(help="渠道名。")]) -> None:
+    """从系统钥匙串中删除某个渠道的密钥。环境变量和 .env 需要自行修改。"""
+    try:
+        deleted = build_secret_store().delete_from_keychain(provider)
+    except KeychainUnavailableError as error:
+        _fail(str(error))
+    console.print(f"已删除：{provider}" if deleted else f"钥匙串中没有 {provider}")
+
+
+def _require_keys(config: AppConfig, secrets: SecretStore) -> None:
+    if missing := missing_keys(config, secrets):
+        names = "\n".join(f"  {name}（{env_var_name(name)}）" for name in missing)
+        hint = "请设置环境变量、写入 .env，或运行 `dehydrater key set <渠道名>`。"
+        _fail(f"以下渠道缺少密钥：\n{names}\n{hint}")
 
 
 def _load_config(path: Path | None) -> AppConfig:

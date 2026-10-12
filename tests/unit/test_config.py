@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from dehydrater.config import AppConfig, example_config
 
-_CLEAN_TASK = '[tasks.clean]\nprovider = "volc-ark"'
+_CLEAN_TASK = '[tasks.clean]\nprovider = "clean"'
 
 
 def _example_with_clean_provider(provider: str) -> AppConfig:
@@ -27,11 +27,16 @@ def test_task_must_reference_existing_provider() -> None:
 
 def test_chat_task_cannot_use_asr_only_provider() -> None:
     with pytest.raises(ValidationError, match="chat"):
-        _example_with_clean_provider("volc-speech")
+        _example_with_clean_provider("transcribe")
 
 
-def test_missing_secrets_lists_only_unset_variables() -> None:
+def test_used_providers_are_those_referenced_by_tasks() -> None:
     config = AppConfig.model_validate(tomllib.loads(example_config()))
-    assert config.missing_secrets({"ARK_API_KEY": "x", "VOLC_SPEECH_API_KEY": ""}) == [
-        "VOLC_SPEECH_API_KEY"
-    ]
+    assert config.used_providers() == ["clean", "extract-notices", "transcribe", "write-sections"]
+
+
+def test_provider_names_must_be_identifiers() -> None:
+    text = example_config().replace("[providers.clean]", "[providers.Clean]")
+    text = text.replace('provider = "clean"', 'provider = "Clean"')
+    with pytest.raises(ValidationError, match="只能包含小写字母"):
+        AppConfig.model_validate(tomllib.loads(text))

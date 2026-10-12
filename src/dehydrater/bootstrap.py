@@ -4,11 +4,15 @@
 """
 
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
+from pathlib import Path
+
+from dotenv import find_dotenv
 
 from dehydrater.adapters.asr_openai_compat import OpenAICompatibleTranscriber
-from dehydrater.adapters.asr_volcengine import VolcengineTranscriber
+from dehydrater.adapters.asr_volcengine import VolcengineApi, VolcengineTranscriber
 from dehydrater.adapters.audio_pyav import PyAVAudioExtractor
+from dehydrater.adapters.keychain_keyring import SystemKeychain
 from dehydrater.adapters.llm_openai_compat import OpenAICompatibleChatModel
 from dehydrater.adapters.slides_pymupdf import PyMuPDFSlideReader
 from dehydrater.config import (
@@ -16,7 +20,9 @@ from dehydrater.config import (
     OpenAICompatibleProvider,
     TaskConfig,
     VolcengineAsrProvider,
+    config_dir,
 )
+from dehydrater.credentials import SecretStore
 from dehydrater.pipeline.events import PipelineEvent
 from dehydrater.pipeline.lecture import LecturePipeline
 from dehydrater.pipeline.stage import Stage
@@ -39,18 +45,20 @@ from dehydrater.ports import ChatModel, Transcriber
 class _Adapters:
     """按任务配置构造 adapter。"""
 
-    def __init__(self, config: AppConfig, env: Mapping[str, str]) -> None:
+    def __init__(self, config: AppConfig, secrets: SecretStore) -> None:
         self._config = config
-        self._env = env
+        self._secrets = secrets
 
     def transcriber(self, task: TaskConfig) -> Transcriber:
         match self._config.provider_of(task):
-            case OpenAICompatibleProvider(base_url=base_url, api_key_env=key_env):
+            case OpenAICompatibleProvider(base_url=base_url):
                 return OpenAICompatibleTranscriber(
-                    base_url=base_url, api_key=self._secret(key_env), model=task.model
+                    base_url=base_url, api_key=self._secret(task), model=task.model
                 )
-            case VolcengineAsrProvider(api_key_env=key_env):
-                return VolcengineTranscriber(api_key=self._secret(key_env), resource_id=task.model)
+            case VolcengineAsrProvider(api=api):
+                return VolcengineTranscriber(
+                    api_key=self._secret(task), resource_id=task.model, api=VolcengineApi(api)
+                )
 
     def chat_model(self, task: TaskConfig) -> ChatModel:
         provider = self._config.provider_of(task)
@@ -58,19 +66,32 @@ class _Adapters:
         assert isinstance(provider, OpenAICompatibleProvider)
         return OpenAICompatibleChatModel(
             base_url=provider.base_url,
-            api_key=self._secret(provider.api_key_env),
+            api_key=self._secret(task),
             model=task.model,
             temperature=task.temperature,
         )
 
-    def _secret(self, env_name: str) -> str:
-        # 缺失的密钥由 CLI 在运行前统一检查；这里允许为空，便于 status 等命令使用
-        return self._env.get(env_name, "")
+    def _secret(self, task: TaskConfig) -> str:
+        # 缺失的密钥由 CLI 在运行前用 missing_keys 统一检查；这里允许为空，便于 status 等命令使用
+        secret = self._secrets.get(task.provider)
+        return secret.value if secret else ""
 
 
-def build_stages(config: AppConfig, env: Mapping[str, str] = os.environ) -> list[Stage]:
+def build_secret_store() -> SecretStore:
+    """环境变量 → 当前目录向上找到的 .env → 配置目录下的 .env → 系统钥匙串。"""
+    dotenv_paths = [Path(found)] if (found := find_dotenv(usecwd=True)) else []
+    dotenv_paths.append(config_dir() / ".env")
+    return SecretStore(os.environ, dotenv_paths, SystemKeychain())
+
+
+def missing_keys(config: AppConfig, secrets: SecretStore) -> list[str]:
+    """任务用到、但哪里都找不到密钥的渠道。"""
+    return [name for name in config.used_providers() if secrets.get(name) is None]
+
+
+def build_stages(config: AppConfig, secrets: SecretStore) -> list[Stage]:
     """按依赖顺序排列的全部阶段。"""
-    adapters = _Adapters(config, env)
+    adapters = _Adapters(config, secrets)
     tasks = config.tasks
     return [
         ExtractAudioStage(PyAVAudioExtractor()),
@@ -89,6 +110,7 @@ def build_stages(config: AppConfig, env: Mapping[str, str] = os.environ) -> list
 def build_pipeline(
     workspace: Workspace,
     config: AppConfig,
+    secrets: SecretStore,
     on_event: Callable[[PipelineEvent], None] = lambda _: None,
 ) -> LecturePipeline:
-    return LecturePipeline(workspace, build_stages(config), on_event)
+    return LecturePipeline(workspace, build_stages(config, secrets), on_event)

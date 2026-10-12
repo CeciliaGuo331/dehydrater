@@ -1,30 +1,55 @@
 # dehydrater 配置文件
 #
-# [providers.*]  渠道：怎么连接一个 API 账号。密钥只写环境变量名，不写明文。
-# [tasks.*]      任务：每个需要调用 API 的步骤，各自用哪个渠道、哪个模型。
+# [providers.<渠道名>]  渠道：怎么连接一个 API 账号。每个渠道对应一把密钥。
+# [tasks.<任务名>]      任务：每个调用 API 的步骤，各自用哪个渠道、哪个模型。
+#
+# 密钥不写在这里。按渠道名查找，顺序为：
+#   1. 环境变量 DEHYDRATER_KEY_<渠道名大写，- 换成 _>，例如 DEHYDRATER_KEY_CLEAN
+#   2. .env 文件中的同名变量
+#   3. 系统钥匙串，用 `dehydrater key set <渠道名>` 写入
+#
+# 下面为每个任务单独定义了一个渠道，因此每个任务都要单独填一把密钥。
+# 如果几个任务想共用同一把密钥，让它们的 provider 指向同一个渠道即可。
 
-[providers.volc-speech]
+# ---- 渠道 ----
+
+# 语音识别：豆包语音控制台的 API Key（请求头 X-Api-Key）
+[providers.transcribe]
 kind = "volcengine-asr"
-api_key_env = "VOLC_SPEECH_API_KEY"
+api = "standard"                        # standard：提交后轮询；flash：极速版（需另外开通）
 
-[providers.volc-ark]
+# 以下三个都是火山方舟（兼容 OpenAI 接口），密钥来自方舟控制台
+[providers.extract-notices]
 kind = "openai-compatible"
 base_url = "https://ark.cn-beijing.volces.com/api/v3"
-api_key_env = "ARK_API_KEY"
 
+[providers.clean]
+kind = "openai-compatible"
+base_url = "https://ark.cn-beijing.volces.com/api/v3"
+
+[providers.write-sections]
+kind = "openai-compatible"
+base_url = "https://ark.cn-beijing.volces.com/api/v3"
+
+# ---- 任务 ----
+
+# 转写课堂录音
 [tasks.transcribe]
-provider = "volc-speech"
-model = "volc.seedasr.auc"              # 豆包录音文件识别模型 2.0
+provider = "transcribe"
+model = "volc.seedasr.auc"              # 火山 ASR 的 model 填资源 ID：录音文件识别 2.0（1.0 为 volc.bigasr.auc）
 
+# 从原始逐字稿中提取签到、考试、DDL 等通知
 [tasks.extract_notices]
-provider = "volc-ark"
+provider = "extract-notices"
 model = "doubao-seed-2-1-pro-260915"    # 以方舟控制台中开通的模型 ID 为准
 
+# 清洗逐字稿：去口癖、修正术语
 [tasks.clean]
-provider = "volc-ark"
+provider = "clean"
 model = "doubao-seed-2-1-pro-260915"
 
+# 按课件页生成讲义
 [tasks.write_sections]
-provider = "volc-ark"
+provider = "write-sections"
 model = "doubao-seed-2-1-pro-260915"
 temperature = 0.3

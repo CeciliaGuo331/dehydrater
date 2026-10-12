@@ -10,10 +10,12 @@ dependencies = [
     "av>=14",
     "httpx>=0.28",
     "jinja2>=3.1",
+    "keyring>=25.7.0",
     "openai>=1.80",
     "platformdirs>=4.3",
     "pydantic>=2.11",
     "pymupdf>=1.26",
+    "python-dotenv>=1.2.4",
     "rich>=14",
     "tomli-w>=1.2",
     "typer>=0.16",
@@ -82,6 +84,7 @@ layers = [
     "dehydrater.bootstrap",
     "dehydrater.config",
     "dehydrater.pipeline | dehydrater.adapters",
+    "dehydrater.credentials",
     "dehydrater.ports",
     "dehydrater.domain",
 ]
@@ -90,4 +93,4 @@ layers = [
 name = "IO 与外部服务的库只能出现在 adapters 中"
 type = "forbidden"
 source_modules = ["dehydrater.domain", "dehydrater.ports", "dehydrater.pipeline"]
-forbidden_modules = ["av", "pymupdf", "openai", "httpx"]
+forbidden_modules = ["av", "pymupdf", "openai", "httpx", "keyring"]

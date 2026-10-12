@@ -31,7 +31,7 @@
 
 | 用途 | 服务 | 何时需要 | 说明 |
 | --- | --- | --- | --- |
-| ASR | **豆包语音**：大模型录音文件识别 | S1 起 | 中英混杂表现好，支持热词（直传最多 5000 个），返回分句和逐字时间戳。接口是火山的私有协议（提交任务 + 轮询结果），需要单独写一个 adapter。**标准版只接受音频 URL，不能上传本地文件**，上传方案在 S1 确定 |
+| ASR | **豆包语音**：大模型录音文件识别**标准版**，默认 2.0（`volc.seedasr.auc`，0.8 元/小时）；1.0（`volc.bigasr.auc`，2.3 元/小时）备用 | S1 起 | 中英混杂表现好，支持热词，返回毫秒级分句时间戳。提交任务后轮询结果。文档只列出音频 URL，但**实测 `audio.data` 内联 base64 可用**，无需对象存储。极速版（同步返回）也已实现，开通后在配置里设 `api = "flash"` 即可切换 |
 | LLM | **火山方舟**：豆包或方舟上托管的 DeepSeek | S4 起 | 接口兼容 OpenAI（`https://ark.cn-beijing.volces.com/api/v3`） |
 
 每个任务的 API 渠道都可以单独配置（见 §9）。如果 S1 发现火山 ASR 不理想，可以换成其他渠道对比（例如 Groq `whisper-large-v3`），只需改配置，不用改代码。
@@ -51,7 +51,7 @@ slides.pdf ──► ingest_slides ──────────┤        └�
 
 | 阶段 | 输入 → 输出 | 实现要点 |
 | --- | --- | --- |
-| `extract_audio` | 视频 → 16kHz 单声道 Opus | PyAV 解码；90 分钟约 16MB。如果超过 ASR adapter 声明的单次上传上限，就按能量最低点切块（numpy） |
+| `extract_audio` | 视频 → 16kHz 单声道 MP3（32kbps） | PyAV 解码；90 分钟约 22MB。选 MP3 是因为各家 ASR 普遍支持。如果超过 ASR adapter 声明的单次上传上限，就按能量最低点切块（numpy） |
 | `ingest_slides` | PDF → 每页文本 + 页面 PNG + 术语表 | PyMuPDF。术语表 = 课件中的英文词、缩写、中英对照，按频率取前 N 个 |
 | `transcribe` | 音频 + 术语表 → `Transcript` | 术语表放进 ASR 的 `prompt` 参数，提高 `TLB`、`fork()` 等词的识别率 |
 | `extract_notices` | **原始**逐字稿 + 上课日期 → `list[Notice]` | 必须读原始稿，因为 `clean` 会把通知当废话删掉。原则是宁多勿漏 |
@@ -221,60 +221,68 @@ dehydrater run L03 --from clean       # 强制从某个阶段开始重跑
 dehydrater run L03 --until transcribe # 执行完某个阶段后停止
 dehydrater status L03                 # 列出各阶段状态和累计花费
 dehydrater config init                # 生成示例配置
-dehydrater config check               # 校验配置，检查密钥环境变量（连通性测试在 S2 加入）
+dehydrater config check               # 校验配置，检查每个渠道都有密钥（连通性测试在 S2 加入）
+dehydrater key list | set | unset     # 管理各渠道的密钥
 ```
 
 ### 配置：渠道与任务分离
 
-配置文件为 `~/.config/dehydrater/config.toml`，用 platformdirs 定位。配置分两层：
+配置文件为 `~/.config/dehydrater/config.toml`，用 platformdirs 定位（`dehydrater config init` 生成示例）。配置分两层：
 
-- **渠道（provider）**：一个 API 账号怎么连，包括协议类型、地址、密钥。
-- **任务（task）**：每个需要调用 API 的阶段，各自指定用哪个渠道、哪个模型。
+- **渠道（provider）**：怎么连接一个 API 账号，包括协议类型和地址。每个渠道对应一把密钥。
+- **任务（task）**：每个调用 API 的阶段，各自指定用哪个渠道、哪个模型。
+
+示例配置为每个任务单独定义了一个渠道，所以每个任务各填一把密钥；几个任务想共用密钥时，让它们指向同一个渠道即可。
 
 ```toml
-[providers.volc-speech]
+[providers.transcribe]
 kind = "volcengine-asr"
-api_key_env = "VOLC_SPEECH_API_KEY"     # 密钥只写环境变量名，不在配置里写明文
+api = "standard"                        # 或 "flash"（极速版，需另外开通）
 
-[providers.volc-ark]
+[providers.clean]
 kind = "openai-compatible"
 base_url = "https://ark.cn-beijing.volces.com/api/v3"
-api_key_env = "ARK_API_KEY"
+
+# extract-notices、write-sections 同理
 
 [tasks.transcribe]
-provider = "volc-speech"
-model = "volc.seedasr.auc"              # 火山 ASR 填资源 ID：豆包录音文件识别模型 2.0
-
-[tasks.extract_notices]
-provider = "volc-ark"
-model = "doubao-seed-2-1-pro-260915"
+provider = "transcribe"
+model = "volc.seedasr.auc"              # 火山 ASR 填资源 ID：录音文件识别 2.0
 
 [tasks.clean]
-provider = "volc-ark"
+provider = "clean"
 model = "doubao-seed-2-1-pro-260915"
 
 [tasks.write_sections]
-provider = "volc-ark"
+provider = "write-sections"
 model = "doubao-seed-2-1-pro-260915"
 temperature = 0.3
 ```
 
-（以上模型名只是示意，以开通后控制台显示的为准。）
+### 密钥
+
+密钥不写在配置文件里，按渠道名查找（`credentials.py`），顺序为：
+
+1. 环境变量 `DEHYDRATER_KEY_<渠道名>`（大写，`-` 换成 `_`），适合 CI 和 nix 等脚本化场景
+2. `.env` 文件中的同名变量：先找当前目录向上的 `.env`，再找配置目录下的 `.env`
+3. 系统钥匙串（keyring 库），用 `dehydrater key set <渠道名>` 写入，输入时不回显
+
+`dehydrater key list` 显示每个渠道的密钥来自哪里（不显示密钥本身），`key unset` 从钥匙串删除。
 
 实现要点：
 
-- `config.py` 用 pydantic 校验这份配置。`task.provider` 引用了不存在的渠道、或者渠道 `kind` 与任务类型不匹配（例如把 LLM 渠道配给 `transcribe`）时，启动阶段就报错。
+- `config.py` 用 pydantic 校验配置。`task.provider` 引用了不存在的渠道、渠道 `kind` 与任务类型不匹配（例如把 ASR 渠道配给 `clean`）、渠道名不是小写标识符时，加载阶段就报错。
 - `bootstrap.py` 按 `kind` 为每个任务构造一个 adapter 实例，注入对应的 stage。stage 只看得到 `Transcriber` 或 `ChatModel` 接口，不知道背后是哪家。
+- `run` 和 `config check` 在开始前检查所有用到的渠道都能找到密钥；`status` 不需要密钥。
 - 同一渠道下的多个任务共享一个限流器（S4 加入，届时在渠道配置中增加 `max_concurrency`、`rpm`）。
-- 缓存键包含该任务的 `provider + model + 参数`（不包含密钥），所以换渠道或换模型只会重跑受影响的阶段。
-- `dehydrater config check` 检查所有任务的渠道是否连得通。
+- 缓存键包含该任务的渠道地址、模型和参数（不包含密钥），所以换渠道或换模型只会重跑受影响的阶段。
 
 ## 10. 依赖
 
 | 用途 | 库 |
 | --- | --- |
 | 工程 | uv、ruff、basedpyright、import-linter、pytest、pytest-asyncio、respx |
-| 数据与配置 | pydantic、pydantic-settings、platformdirs |
+| 数据与配置 | pydantic、platformdirs、keyring（系统钥匙串）、python-dotenv |
 | 媒体与文档 | av（PyAV，wheel 自带 FFmpeg）、pymupdf |
 | 文本与算法 | numpy、scikit-learn |
 | API | openai（所有兼容 OpenAI 的渠道）、httpx（火山 ASR 私有接口）、tenacity（重试）、aiolimiter（限流） |
@@ -287,7 +295,7 @@ PyMuPDF 使用 AGPL 许可，所以项目许可证定为 **AGPL-3.0**。
 | 步骤 | 内容 | 完成标准 |
 | --- | --- | --- |
 | **S0** 骨架 ✅ | 项目结构、工具链、领域模型、`flake.nix`、GitHub Actions | `uv run pytest` 和类型检查全部通过 |
-| **S1** ASR 选型 | 用一个脚本抽取音频，从你的课程里截 5 分钟（要有中英混杂和通知），调用火山 ASR 转写，有需要再换其他渠道对比 | 你人工看过结果，选定 ASR |
+| **S1** ASR 选型 | 用一个脚本抽取音频，从你的课程里截 5 分钟（要有中英混杂和通知），用 `run --until transcribe` 调用火山 ASR 转写，对比 2.0 与 1.0，有需要再换其他渠道对比（备选：硅基流动 SenseVoice，兼容 OpenAI 接口） | 你人工看过结果，选定 ASR |
 | **S2** 转写管线 | `config`（渠道与任务）、`workspace`、`cache`、`runner`、`extract_audio`、`transcribe`、CLI 的 `init`/`run`/`status`/`config check` | 一节完整的课得到原始逐字稿；第二次 `run` 时全部命中缓存 |
 | **S3** 课件 | `ingest_slides`、术语表，并把术语表回灌到 ASR 提示词 | 对比加入术语表前后的转写结果 |
 | **S4** 清洗与通知 | `structured.py`、`clean`、`extract_notices`、两份模板 | **第一次可用**：拿到 `transcript.md` 和 `notices.md` |

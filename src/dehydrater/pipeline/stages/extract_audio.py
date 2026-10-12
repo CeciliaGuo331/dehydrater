@@ -20,7 +20,7 @@ class ExtractAudioStage(Stage):
 
     async def run(self, ctx: StageContext) -> None:
         lecture = ctx.read(LECTURE)
-        dest = ctx.files_dir / "audio.ogg"
+        dest = ctx.files_dir / "audio.mp3"
         video = ctx.workspace.resolve(lecture.video.path)
         extracted = await asyncio.to_thread(self._extractor.extract, video, dest)
         ctx.write(

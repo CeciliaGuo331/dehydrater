@@ -3,34 +3,59 @@
 from datetime import date
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
-from dehydrater.cli import app
+from dehydrater import cli
+from dehydrater.credentials import SecretStore
+
+from .fakes import FakeKeychain
 
 runner = CliRunner()
 
 
-def test_config_init_then_check_reports_missing_secrets(tmp_path: Path) -> None:
-    config = tmp_path / "config.toml"
+@pytest.fixture
+def keychain(monkeypatch: pytest.MonkeyPatch) -> FakeKeychain:
+    """隔离真实的环境变量、.env 和系统钥匙串。"""
+    fake = FakeKeychain()
+    monkeypatch.setattr(cli, "build_secret_store", lambda: SecretStore({}, [], fake))
+    return fake
 
-    assert runner.invoke(app, ["config", "init", "--config", str(config)]).exit_code == 0
-    result = runner.invoke(app, ["config", "check", "--config", str(config)], env={})
+
+@pytest.fixture
+def config(tmp_path: Path) -> Path:
+    path = tmp_path / "config.toml"
+    assert runner.invoke(cli.app, ["config", "init", "--config", str(path)]).exit_code == 0
+    return path
+
+
+def test_config_check_lists_providers_without_keys(config: Path, keychain: FakeKeychain) -> None:
+    keychain.entries["transcribe"] = "k"
+
+    result = runner.invoke(cli.app, ["config", "check", "--config", str(config)])
 
     assert result.exit_code == 1
-    assert "ARK_API_KEY" in result.output
+    assert "DEHYDRATER_KEY_CLEAN" in result.output
+    assert "DEHYDRATER_KEY_TRANSCRIBE" not in result.output
 
 
-def test_init_then_status(tmp_path: Path) -> None:
-    config = tmp_path / "config.toml"
-    runner.invoke(app, ["config", "init", "--config", str(config)])
+def test_key_set_stores_in_keychain(keychain: FakeKeychain) -> None:
+    result = runner.invoke(cli.app, ["key", "set", "clean"], input="secret\n")
+
+    assert result.exit_code == 0, result.output
+    assert keychain.entries == {"clean": "secret"}
+    assert "secret" not in result.output
+
+
+def test_init_then_status(tmp_path: Path, config: Path, keychain: FakeKeychain) -> None:
     video = tmp_path / "lecture.mp4"
     video.write_bytes(b"")
     workspace = tmp_path / "L01"
 
     init = runner.invoke(
-        app, ["init", str(workspace), "--video", str(video), "--date", str(date(2026, 10, 12))]
+        cli.app, ["init", str(workspace), "--video", str(video), "--date", str(date(2026, 10, 12))]
     )
-    status = runner.invoke(app, ["status", str(workspace), "--config", str(config)])
+    status = runner.invoke(cli.app, ["status", str(workspace), "--config", str(config)])
 
     assert init.exit_code == 0, init.output
     assert status.exit_code == 0, status.output
