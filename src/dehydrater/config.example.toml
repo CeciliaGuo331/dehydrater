@@ -1,0 +1,30 @@
+# dehydrater 配置文件
+#
+# [providers.*]  渠道：怎么连接一个 API 账号。密钥只写环境变量名，不写明文。
+# [tasks.*]      任务：每个需要调用 API 的步骤，各自用哪个渠道、哪个模型。
+
+[providers.volc-speech]
+kind = "volcengine-asr"
+api_key_env = "VOLC_SPEECH_API_KEY"
+
+[providers.volc-ark]
+kind = "openai-compatible"
+base_url = "https://ark.cn-beijing.volces.com/api/v3"
+api_key_env = "ARK_API_KEY"
+
+[tasks.transcribe]
+provider = "volc-speech"
+model = "volc.seedasr.auc"              # 豆包录音文件识别模型 2.0
+
+[tasks.extract_notices]
+provider = "volc-ark"
+model = "doubao-seed-2-1-pro-260915"    # 以方舟控制台中开通的模型 ID 为准
+
+[tasks.clean]
+provider = "volc-ark"
+model = "doubao-seed-2-1-pro-260915"
+
+[tasks.write_sections]
+provider = "volc-ark"
+model = "doubao-seed-2-1-pro-260915"
+temperature = 0.3

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+dist/
+result
+
+# 密钥
+apikey.txt
+.env
+
+# 火山引擎文档声明不得转发传播，只留在本地参考
+docs/*.pdf

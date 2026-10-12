@@ -1,0 +1,93 @@
+[project]
+name = "dehydrater"
+version = "0.1.0"
+description = "把课堂录像和课件脱水成逐字稿、通知清单和讲义"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.13"
+dependencies = [
+    "av>=14",
+    "httpx>=0.28",
+    "jinja2>=3.1",
+    "openai>=1.80",
+    "platformdirs>=4.3",
+    "pydantic>=2.11",
+    "pymupdf>=1.26",
+    "rich>=14",
+    "tomli-w>=1.2",
+    "typer>=0.16",
+]
+
+[project.scripts]
+dehydrater = "dehydrater.cli:app"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.29",
+    "import-linter>=2.3",
+    "numpy>=2.5.4",
+    "pytest>=8.4",
+    "pytest-asyncio>=1.0",
+    "ruff>=0.12",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.13"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+include = ["src/**/*.py", "tests/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "PTH", "N", "ASYNC", "C4", "RET"]
+# 中文全角标点出现在文档字符串和注释里是正常的
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.basedpyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+pythonVersion = "3.13"
+
+# PyAV、PyMuPDF 的类型标注不完整。adapters 是隔离第三方库的边界，
+# 只在这里放宽"未知类型"检查；其余规则仍按 strict 执行。
+[[tool.basedpyright.executionEnvironments]]
+root = "src/dehydrater/adapters"
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests/adapters"
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.importlinter]
+root_package = "dehydrater"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "分层：上层可以依赖下层，反之不行"
+type = "layers"
+layers = [
+    "dehydrater.cli",
+    "dehydrater.bootstrap",
+    "dehydrater.config",
+    "dehydrater.pipeline | dehydrater.adapters",
+    "dehydrater.ports",
+    "dehydrater.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "IO 与外部服务的库只能出现在 adapters 中"
+type = "forbidden"
+source_modules = ["dehydrater.domain", "dehydrater.ports", "dehydrater.pipeline"]
+forbidden_modules = ["av", "pymupdf", "openai", "httpx"]
