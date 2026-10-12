@@ -13,13 +13,13 @@ dehydrater 把一节课的录音（或录像）和 PDF 课件整理成三份 Mar
 需要 Python 3.13 或更高版本，以及 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
-uv tool install git+https://github.com/<owner>/dehydrater   # 安装后可在任何目录使用 dehydrater 命令
+uv tool install git+https://github.com/CeciliaGuo331/dehydrater   # 安装后可在任何目录使用 dehydrater 命令
 ```
 
 从源码运行（开发时）：
 
 ```bash
-git clone https://github.com/<owner>/dehydrater && cd dehydrater
+git clone https://github.com/CeciliaGuo331/dehydrater && cd dehydrater
 uv sync
 uv run dehydrater --help
 ```

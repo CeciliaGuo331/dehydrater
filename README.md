@@ -11,7 +11,7 @@
 ## 快速上手
 
 ```bash
-uv tool install git+https://github.com/<owner>/dehydrater
+uv tool install git+https://github.com/CeciliaGuo331/dehydrater
 dehydrater setup        # 首次使用：填写各项服务的接入地址、模型和 API Key
 dehydrater              # 交互式整理一节课
 ```
