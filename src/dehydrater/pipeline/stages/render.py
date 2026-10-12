@@ -1,6 +1,6 @@
 """把结构化产物渲染成用户可见的 Markdown，每份输出一个阶段，产出后立即可读。"""
 
-from dehydrater.pipeline.artifacts import DEHYDRATED_TRANSCRIPT, GUIDE, LECTURE, RAW_TRANSCRIPT
+from dehydrater.pipeline.artifacts import DEHYDRATED_TRANSCRIPT, LECTURE, NOTES, RAW_TRANSCRIPT
 from dehydrater.pipeline.stage import Stage, StageContext
 from dehydrater.pipeline.templating import TemplateSet
 
@@ -34,9 +34,9 @@ class RenderDehydratedStage(_RenderStage):
         self._write(ctx, "dehydrated.md.j2", "dehydrated.md", transcript=transcript)
 
 
-class RenderGuideStage(_RenderStage):
-    name = "render_guide"
-    inputs = (LECTURE, GUIDE)
+class RenderNotesStage(_RenderStage):
+    name = "render_notes"
+    inputs = (LECTURE, NOTES)
 
     async def run(self, ctx: StageContext) -> None:
-        self._write(ctx, "guide.md.j2", "guide.md", guide=ctx.read(GUIDE))
+        self._write(ctx, "notes.md.j2", "notes.md", notes=ctx.read(NOTES))

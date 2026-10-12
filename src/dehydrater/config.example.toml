@@ -18,15 +18,20 @@
 kind = "volcengine-asr"
 api = "standard"                        # standard：提交后轮询；flash：极速版（需另外开通）
 
-# 以下两个都是火山方舟（兼容 OpenAI 接口），密钥来自方舟控制台
+# 以下三个都是火山方舟（兼容 OpenAI 接口），密钥来自方舟控制台
 [providers.dehydrate]
 kind = "openai-compatible"
 base_url = "https://ark.cn-beijing.volces.com/api/v3"
 max_concurrency = 4                     # 脱水是分块并发调用的
 
-[providers.guide]
+[providers.outline]
 kind = "openai-compatible"
 base_url = "https://ark.cn-beijing.volces.com/api/v3"
+
+[providers.write-notes]
+kind = "openai-compatible"
+base_url = "https://ark.cn-beijing.volces.com/api/v3"
+max_concurrency = 4                     # 笔记是按章并发撰写的
 
 # ---- 任务 ----
 
@@ -42,8 +47,14 @@ model = "doubao-seed-2-1-lite-260915"   # 以方舟控制台中开通的模型 I
 # 方舟的豆包模型默认开启深度思考，又慢又贵；逐段脱水不需要
 extra_body = { thinking = { type = "disabled" } }
 
-# 导读：概览、章节、术语、课堂通知 → guide.md
-[tasks.guide]
-provider = "guide"
+# 大纲：把课件和讲课内容分成章，并生成概览、术语、课堂通知
+[tasks.outline]
+provider = "outline"
+model = "doubao-seed-2-1-pro-260915"
+extra_body = { thinking = { type = "disabled" } }
+
+# 笔记：按章撰写以课件为主线、融入课堂讲解的笔记 → notes.md
+[tasks.write_notes]
+provider = "write-notes"
 model = "doubao-seed-2-1-pro-260915"
 extra_body = { thinking = { type = "disabled" } }

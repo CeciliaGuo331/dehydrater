@@ -14,6 +14,7 @@ from dehydrater.adapters.asr_volcengine import VolcengineApi, VolcengineTranscri
 from dehydrater.adapters.audio_pyav import PyAVAudioExtractor
 from dehydrater.adapters.keychain_keyring import SystemKeychain
 from dehydrater.adapters.llm_openai_compat import OpenAICompatibleChatModel
+from dehydrater.adapters.slides_pymupdf import PyMuPDFSlideReader
 from dehydrater.config import (
     AppConfig,
     OpenAICompatibleProvider,
@@ -27,13 +28,15 @@ from dehydrater.pipeline.lecture import LecturePipeline
 from dehydrater.pipeline.stage import Stage
 from dehydrater.pipeline.stages.dehydrate import DehydrateStage
 from dehydrater.pipeline.stages.extract_audio import ExtractAudioStage
+from dehydrater.pipeline.stages.ingest_slides import IngestSlidesStage
+from dehydrater.pipeline.stages.outline import OutlineStage
 from dehydrater.pipeline.stages.render import (
     RenderDehydratedStage,
-    RenderGuideStage,
+    RenderNotesStage,
     RenderRawStage,
 )
 from dehydrater.pipeline.stages.transcribe import TranscribeStage
-from dehydrater.pipeline.stages.write_guide import WriteGuideStage
+from dehydrater.pipeline.stages.write_notes import WriteNotesStage
 from dehydrater.pipeline.templating import TemplateSet
 from dehydrater.pipeline.workspace import Workspace
 from dehydrater.ports import ChatModel, Transcriber
@@ -97,12 +100,14 @@ def build_stages(config: AppConfig, secrets: SecretStore) -> list[Stage]:
     templates = TemplateSet("templates")
     return [
         ExtractAudioStage(PyAVAudioExtractor()),
+        IngestSlidesStage(PyMuPDFSlideReader()),
         TranscribeStage(adapters.transcriber(tasks.transcribe)),
         RenderRawStage(templates),
         DehydrateStage(adapters.chat_model(tasks.dehydrate), prompts),
         RenderDehydratedStage(templates),
-        WriteGuideStage(adapters.chat_model(tasks.guide), prompts),
-        RenderGuideStage(templates),
+        OutlineStage(adapters.chat_model(tasks.outline), prompts),
+        WriteNotesStage(adapters.chat_model(tasks.write_notes), prompts),
+        RenderNotesStage(templates),
     ]
 
 

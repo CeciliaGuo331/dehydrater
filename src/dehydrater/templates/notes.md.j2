@@ -1,0 +1,43 @@
+# {{ lecture.title }} · 课堂笔记
+
+> {{ lecture.date }} · 以课件为主线、融入课堂讲解；`▶ 时间` 为对应的录音位置
+
+## 概览
+
+{{ notes.overview }}
+
+{% if notes.notices %}
+## 课堂通知
+
+{% for notice in notes.notices %}
+- `{{ notice.at | timecode }}` {{ notice.text }}
+{% endfor %}
+
+{% endif %}
+## 目录
+
+{% for chapter in notes.chapters %}
+{{ loop.index }}. {{ chapter.title }}{% if chapter.start is not none %} · `{{ chapter.start | timecode }}`{% endif %}
+
+{% endfor %}
+
+{% for chapter in notes.chapters %}
+## {{ loop.index }}. {{ chapter.title }}
+
+{% if chapter.pages or chapter.start is not none %}
+> {% if chapter.pages %}课件第 {{ chapter.pages[0] }}–{{ chapter.pages[1] }} 页{% endif %}{% if chapter.pages and chapter.start is not none %} · {% endif %}{% if chapter.start is not none %}讲解从 `{{ chapter.start | timecode }}` 开始{% endif %}
+
+
+{% endif %}
+{{ chapter.body }}
+
+{% endfor %}
+{% if notes.key_terms %}
+## 术语
+
+| 术语 | 解释 |
+| --- | --- |
+{% for term in notes.key_terms %}
+| {{ term.term }} | {{ term.explanation }} |
+{% endfor %}
+{% endif %}

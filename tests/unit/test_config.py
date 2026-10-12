@@ -32,11 +32,11 @@ def test_chat_task_cannot_use_asr_only_provider() -> None:
 
 def test_used_providers_are_those_referenced_by_tasks() -> None:
     config = AppConfig.model_validate(tomllib.loads(example_config()))
-    assert config.used_providers() == ["dehydrate", "guide", "transcribe"]
+    assert config.used_providers() == ["dehydrate", "outline", "transcribe", "write-notes"]
 
 
 def test_provider_names_must_be_identifiers() -> None:
-    text = example_config().replace("[providers.guide]", "[providers.Guide]")
-    text = text.replace('provider = "guide"', 'provider = "Guide"')
+    text = example_config().replace("[providers.outline]", "[providers.Outline]")
+    text = text.replace('provider = "outline"', 'provider = "Outline"')
     with pytest.raises(ValidationError, match="只能包含小写字母"):
         AppConfig.model_validate(tomllib.loads(text))

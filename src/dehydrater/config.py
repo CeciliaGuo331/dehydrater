@@ -59,13 +59,15 @@ class TaskConfig(_Strict):
 class TasksConfig(_Strict):
     transcribe: TaskConfig
     dehydrate: TaskConfig
-    guide: TaskConfig
+    outline: TaskConfig
+    write_notes: TaskConfig
 
     def required_capabilities(self) -> dict[str, tuple[TaskConfig, Capability]]:
         return {
             "transcribe": (self.transcribe, Capability.ASR),
             "dehydrate": (self.dehydrate, Capability.CHAT),
-            "guide": (self.guide, Capability.CHAT),
+            "outline": (self.outline, Capability.CHAT),
+            "write_notes": (self.write_notes, Capability.CHAT),
         }
 
 

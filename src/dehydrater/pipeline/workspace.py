@@ -35,6 +35,7 @@ class _LectureManifest(BaseModel):
     title: str
     date: date
     recording: Path
+    slides: Path | None = None
 
 
 class Workspace:
@@ -46,14 +47,22 @@ class Workspace:
     .cache/files/       各阶段的二进制中间文件（如音频）
     raw.md              原始逐字稿
     dehydrated.md       脱水逐字稿
-    guide.md            导读
+    notes.md            笔记
     """
 
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
 
     @classmethod
-    def create(cls, root: Path, *, title: str, lecture_date: date, recording: Path) -> "Workspace":
+    def create(
+        cls,
+        root: Path,
+        *,
+        title: str,
+        lecture_date: date,
+        recording: Path,
+        slides: Path | None = None,
+    ) -> "Workspace":
         if (root / LECTURE_FILE).exists():
             raise WorkspaceError(f"{root} 已经是一个工作区")
         workspace = cls(root)
@@ -61,6 +70,7 @@ class Workspace:
             title=title,
             date=lecture_date,
             recording=workspace.portable_path(recording),
+            slides=workspace.portable_path(slides) if slides else None,
         )
         workspace.root.mkdir(parents=True, exist_ok=True)
         data = manifest.model_dump(mode="json", exclude_none=True)
@@ -100,6 +110,7 @@ class Workspace:
             title=manifest.title,
             date=manifest.date,
             recording=self._source_file(manifest.recording),
+            slides=self._source_file(manifest.slides) if manifest.slides else None,
         )
 
     def _source_file(self, path: Path) -> SourceFile:

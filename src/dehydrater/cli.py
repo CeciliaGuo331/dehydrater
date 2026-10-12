@@ -58,6 +58,10 @@ def init(
             help="课堂录像或录音，任何音视频格式。",
         ),
     ],
+    slides: Annotated[
+        Path | None,
+        typer.Option("--slides", "-s", exists=True, dir_okay=False, help="PDF 课件，可选。"),
+    ] = None,
     lecture_date: Annotated[
         str | None, typer.Option("--date", help="上课日期，YYYY-MM-DD，默认今天。")
     ] = None,
@@ -70,6 +74,7 @@ def init(
             title=title or workspace.resolve().name,
             lecture_date=date.fromisoformat(lecture_date) if lecture_date else date.today(),
             recording=recording,
+            slides=slides,
         )
     except (WorkspaceError, ValueError) as error:
         _fail(str(error))
@@ -97,7 +102,7 @@ def run(
     except Exception:
         # 失败详情已由 StageFailed 事件打印
         raise typer.Exit(1) from None
-    for output in ("raw.md", "dehydrated.md", "guide.md"):
+    for output in ("raw.md", "dehydrated.md", "notes.md"):
         if (path := Path(workspace) / output).exists():
             console.print(f"输出：{path}")
 

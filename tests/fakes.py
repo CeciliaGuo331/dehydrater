@@ -29,11 +29,12 @@ class ScriptedChat:
     def __init__(self, *replies: str) -> None:
         self._replies = list(replies)
         self.calls: list[list[ChatMessage]] = []
+        self.json_modes: list[bool] = []
 
     def fingerprint(self) -> Fingerprint:
         return {"model": "scripted"}
 
     async def complete(self, messages: Sequence[ChatMessage], *, json: bool = False) -> ChatReply:
-        assert json, "结构化输出应当开启 JSON 模式"
         self.calls.append(list(messages))
+        self.json_modes.append(json)
         return ChatReply(self._replies.pop(0), TokenUsage(prompt_tokens=10, completion_tokens=5))

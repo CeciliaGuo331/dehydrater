@@ -17,6 +17,7 @@ def test_create_and_load_lecture(tmp_path: Path) -> None:
     assert lecture.title == "进程调度"
     assert lecture.date == date(2026, 10, 12)
     assert lecture.recording.size == len(b"video")
+    assert lecture.slides is None
 
 
 def test_files_inside_workspace_are_stored_relative(tmp_path: Path) -> None:

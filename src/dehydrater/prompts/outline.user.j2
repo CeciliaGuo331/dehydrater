@@ -1,5 +1,16 @@
 课程：{{ lecture.title }}（{{ lecture.date }}）
 
+{% if pages %}
+# 课件
+
+{% for page in pages %}
+=== 第 {{ page.index }} 页 ===
+{{ page.text }}
+
+{% endfor %}
+{% endif %}
+# 讲课逐字稿
+
 {% for paragraph in paragraphs %}
 [{{ loop.index0 }}] ({{ paragraph.start | timecode }}) {{ paragraph.text }}
 {% endfor %}

@@ -1,0 +1,21 @@
+课程：{{ lecture.title }}
+本章：{{ chapter.title }}{% if chapter.pages %}（课件第 {{ chapter.pages[0] }}–{{ chapter.pages[1] }} 页）{% endif %}
+
+
+{% if pages %}
+# 课件
+
+{% for text in pages %}
+---
+{{ text }}
+
+{% endfor %}
+{% else %}
+本章没有对应的课件页。
+
+{% endif %}
+# 老师的讲解
+
+{% for index, paragraph in paragraphs %}
+[{{ index }}] ({{ paragraph.start | timecode }}) {{ paragraph.text }}
+{% endfor %}

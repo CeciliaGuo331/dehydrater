@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 from dehydrater.domain.base import Seconds
+from dehydrater.domain.slides import SlidePage
 from dehydrater.domain.transcript import Transcript
 
 type Fingerprint = Mapping[str, str | int | float | bool | None]
@@ -22,6 +23,14 @@ class AudioExtractor(Protocol):
 
     def extract(self, recording: Path, dest: Path) -> ExtractedAudio:
         """把录像或录音的音轨转成适合 ASR 的音频，写入 dest。"""
+        ...
+
+
+class SlideReader(Protocol):
+    def fingerprint(self) -> Fingerprint: ...
+
+    def read(self, pdf: Path) -> list[SlidePage]:
+        """读取课件每页的文字。"""
         ...
 
 
