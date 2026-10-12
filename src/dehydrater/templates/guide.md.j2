@@ -1,0 +1,37 @@
+# {{ lecture.title }} · 导读
+
+> {{ lecture.date }}
+
+## 概览
+
+{{ guide.overview }}
+
+{% if guide.notices %}
+## 课堂通知
+
+{% for notice in guide.notices %}
+- `{{ notice.at | timecode }}` {{ notice.text }}
+{% endfor %}
+
+{% endif %}
+## 章节
+
+{% for section in guide.sections %}
+### `{{ section.start | timecode }}` {{ section.title }}
+
+{{ section.summary }}
+
+{% for point in section.key_points %}
+- {{ point }}
+{% endfor %}
+
+{% endfor %}
+{% if guide.key_terms %}
+## 术语
+
+| 术语 | 解释 |
+| --- | --- |
+{% for term in guide.key_terms %}
+| {{ term.term }} | {{ term.explanation }} |
+{% endfor %}
+{% endif %}

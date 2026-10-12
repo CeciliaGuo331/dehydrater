@@ -4,10 +4,8 @@ from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from dehydrater.domain.base import DomainModel
+from dehydrater.domain.guide import Guide
 from dehydrater.domain.lecture import AudioFile, Lecture
-from dehydrater.domain.notes import Alignment, LectureNotes
-from dehydrater.domain.notices import NoticeBoard
-from dehydrater.domain.slides import Deck
 from dehydrater.domain.transcript import Transcript
 
 # 显式声明协变，使 ArtifactKey[Transcript] 可以当作 ArtifactKey[DomainModel] 使用。
@@ -23,9 +21,7 @@ class ArtifactKey(Generic[M_co]):  # noqa: UP046
 
 LECTURE = ArtifactKey("lecture", Lecture)
 AUDIO = ArtifactKey("audio", AudioFile)
-DECK = ArtifactKey("deck", Deck)
 RAW_TRANSCRIPT = ArtifactKey("raw_transcript", Transcript)
-CLEAN_TRANSCRIPT = ArtifactKey("clean_transcript", Transcript)
-NOTICES = ArtifactKey("notices", NoticeBoard)
-ALIGNMENT = ArtifactKey("alignment", Alignment)
-NOTES = ArtifactKey("notes", LectureNotes)
+DEHYDRATED_TRANSCRIPT = ArtifactKey("dehydrated_transcript", Transcript)
+"""脱水后的逐字稿：每个分句是一个自然段，时间取自它所合并的原始分句。"""
+GUIDE = ArtifactKey("guide", Guide)

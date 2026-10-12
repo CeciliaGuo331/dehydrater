@@ -4,7 +4,7 @@
 # [tasks.<任务名>]      任务：每个调用 API 的步骤，各自用哪个渠道、哪个模型。
 #
 # 密钥不写在这里。按渠道名查找，顺序为：
-#   1. 环境变量 DEHYDRATER_KEY_<渠道名大写，- 换成 _>，例如 DEHYDRATER_KEY_CLEAN
+#   1. 环境变量 DEHYDRATER_KEY_<渠道名大写，- 换成 _>，例如 DEHYDRATER_KEY_DEHYDRATE
 #   2. .env 文件中的同名变量
 #   3. 系统钥匙串，用 `dehydrater key set <渠道名>` 写入
 #
@@ -18,38 +18,32 @@
 kind = "volcengine-asr"
 api = "standard"                        # standard：提交后轮询；flash：极速版（需另外开通）
 
-# 以下三个都是火山方舟（兼容 OpenAI 接口），密钥来自方舟控制台
-[providers.extract-notices]
+# 以下两个都是火山方舟（兼容 OpenAI 接口），密钥来自方舟控制台
+[providers.dehydrate]
 kind = "openai-compatible"
 base_url = "https://ark.cn-beijing.volces.com/api/v3"
+max_concurrency = 4                     # 脱水是分块并发调用的
 
-[providers.clean]
-kind = "openai-compatible"
-base_url = "https://ark.cn-beijing.volces.com/api/v3"
-
-[providers.write-sections]
+[providers.guide]
 kind = "openai-compatible"
 base_url = "https://ark.cn-beijing.volces.com/api/v3"
 
 # ---- 任务 ----
 
-# 转写课堂录音
+# 转写课堂录音 → raw.md
 [tasks.transcribe]
 provider = "transcribe"
 model = "volc.seedasr.auc"              # 火山 ASR 的 model 填资源 ID：录音文件识别 2.0（1.0 为 volc.bigasr.auc）
 
-# 从原始逐字稿中提取签到、考试、DDL 等通知
-[tasks.extract_notices]
-provider = "extract-notices"
-model = "doubao-seed-2-1-pro-260915"    # 以方舟控制台中开通的模型 ID 为准
+# 脱水：去口癖、重复、闲聊，修正识别错误 → dehydrated.md
+[tasks.dehydrate]
+provider = "dehydrate"
+model = "doubao-seed-2-1-lite-260915"   # 以方舟控制台中开通的模型 ID 为准
+# 方舟的豆包模型默认开启深度思考，又慢又贵；逐段脱水不需要
+extra_body = { thinking = { type = "disabled" } }
 
-# 清洗逐字稿：去口癖、修正术语
-[tasks.clean]
-provider = "clean"
+# 导读：概览、章节、术语、课堂通知 → guide.md
+[tasks.guide]
+provider = "guide"
 model = "doubao-seed-2-1-pro-260915"
-
-# 按课件页生成讲义
-[tasks.write_sections]
-provider = "write-sections"
-model = "doubao-seed-2-1-pro-260915"
-temperature = 0.3
+extra_body = { thinking = { type = "disabled" } }

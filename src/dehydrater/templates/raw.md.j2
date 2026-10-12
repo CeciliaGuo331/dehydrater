@@ -1,0 +1,8 @@
+# {{ lecture.title }} · 原始逐字稿
+
+> {{ lecture.date }} · 语音识别原文，未经处理
+
+{% for segment in transcript.segments %}
+`{{ segment.start | timecode }}` {{ segment.text }}
+
+{% endfor %}

@@ -1,6 +1,9 @@
 """多处测试共用的替身。"""
 
+from collections.abc import Sequence
+
 from dehydrater.credentials import KeychainUnavailableError
+from dehydrater.ports import ChatMessage, ChatReply, Fingerprint, TokenUsage
 
 
 class FakeKeychain:
@@ -18,3 +21,19 @@ class FakeKeychain:
 
     def delete(self, name: str) -> bool:
         return self.entries.pop(name, None) is not None
+
+
+class ScriptedChat:
+    """按顺序返回预设回复的 ChatModel，并记录收到的消息。"""
+
+    def __init__(self, *replies: str) -> None:
+        self._replies = list(replies)
+        self.calls: list[list[ChatMessage]] = []
+
+    def fingerprint(self) -> Fingerprint:
+        return {"model": "scripted"}
+
+    async def complete(self, messages: Sequence[ChatMessage], *, json: bool = False) -> ChatReply:
+        assert json, "结构化输出应当开启 JSON 模式"
+        self.calls.append(list(messages))
+        return ChatReply(self._replies.pop(0), TokenUsage(prompt_tokens=10, completion_tokens=5))

@@ -23,6 +23,14 @@ class StageProgress:
 
 
 @dataclass(frozen=True)
+class StageWarning:
+    """阶段完成了，但结果可能有问题，需要人看一眼。"""
+
+    stage: str
+    message: str
+
+
+@dataclass(frozen=True)
 class StageFinished:
     stage: str
     elapsed_seconds: float
@@ -34,4 +42,6 @@ class StageFailed:
     error: BaseException
 
 
-type PipelineEvent = StageStarted | StageSkipped | StageProgress | StageFinished | StageFailed
+type PipelineEvent = (
+    StageStarted | StageSkipped | StageProgress | StageWarning | StageFinished | StageFailed
+)

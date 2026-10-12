@@ -14,7 +14,6 @@ from dehydrater.adapters.asr_volcengine import VolcengineApi, VolcengineTranscri
 from dehydrater.adapters.audio_pyav import PyAVAudioExtractor
 from dehydrater.adapters.keychain_keyring import SystemKeychain
 from dehydrater.adapters.llm_openai_compat import OpenAICompatibleChatModel
-from dehydrater.adapters.slides_pymupdf import PyMuPDFSlideReader
 from dehydrater.config import (
     AppConfig,
     OpenAICompatibleProvider,
@@ -26,18 +25,16 @@ from dehydrater.credentials import SecretStore
 from dehydrater.pipeline.events import PipelineEvent
 from dehydrater.pipeline.lecture import LecturePipeline
 from dehydrater.pipeline.stage import Stage
-from dehydrater.pipeline.stages.align import AlignStage
-from dehydrater.pipeline.stages.clean import CleanStage
+from dehydrater.pipeline.stages.dehydrate import DehydrateStage
 from dehydrater.pipeline.stages.extract_audio import ExtractAudioStage
-from dehydrater.pipeline.stages.extract_notices import ExtractNoticesStage
-from dehydrater.pipeline.stages.ingest_slides import IngestSlidesStage
 from dehydrater.pipeline.stages.render import (
-    RenderLectureStage,
-    RenderNoticesStage,
-    RenderTranscriptStage,
+    RenderDehydratedStage,
+    RenderGuideStage,
+    RenderRawStage,
 )
 from dehydrater.pipeline.stages.transcribe import TranscribeStage
-from dehydrater.pipeline.stages.write_sections import WriteSectionsStage
+from dehydrater.pipeline.stages.write_guide import WriteGuideStage
+from dehydrater.pipeline.templating import TemplateSet
 from dehydrater.pipeline.workspace import Workspace
 from dehydrater.ports import ChatModel, Transcriber
 
@@ -69,6 +66,9 @@ class _Adapters:
             api_key=self._secret(task),
             model=task.model,
             temperature=task.temperature,
+            max_tokens=task.max_tokens,
+            extra_body=task.extra_body,
+            max_concurrency=provider.max_concurrency,
         )
 
     def _secret(self, task: TaskConfig) -> str:
@@ -93,17 +93,16 @@ def build_stages(config: AppConfig, secrets: SecretStore) -> list[Stage]:
     """按依赖顺序排列的全部阶段。"""
     adapters = _Adapters(config, secrets)
     tasks = config.tasks
+    prompts = TemplateSet("prompts")
+    templates = TemplateSet("templates")
     return [
         ExtractAudioStage(PyAVAudioExtractor()),
-        IngestSlidesStage(PyMuPDFSlideReader()),
         TranscribeStage(adapters.transcriber(tasks.transcribe)),
-        ExtractNoticesStage(adapters.chat_model(tasks.extract_notices)),
-        RenderNoticesStage(),
-        CleanStage(adapters.chat_model(tasks.clean)),
-        RenderTranscriptStage(),
-        AlignStage(),
-        WriteSectionsStage(adapters.chat_model(tasks.write_sections)),
-        RenderLectureStage(),
+        RenderRawStage(templates),
+        DehydrateStage(adapters.chat_model(tasks.dehydrate), prompts),
+        RenderDehydratedStage(templates),
+        WriteGuideStage(adapters.chat_model(tasks.guide), prompts),
+        RenderGuideStage(templates),
     ]
 
 

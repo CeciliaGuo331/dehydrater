@@ -1,0 +1,5 @@
+课程：{{ lecture.title }}（{{ lecture.date }}）
+
+{% for paragraph in paragraphs %}
+[{{ loop.index0 }}] ({{ paragraph.start | timecode }}) {{ paragraph.text }}
+{% endfor %}

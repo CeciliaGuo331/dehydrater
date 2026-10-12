@@ -26,6 +26,7 @@ from dehydrater.pipeline.events import (
     StageProgress,
     StageSkipped,
     StageStarted,
+    StageWarning,
 )
 from dehydrater.pipeline.workspace import Workspace, WorkspaceError
 
@@ -47,10 +48,16 @@ ConfigOption = Annotated[
 @app.command()
 def init(
     workspace: WorkspaceArg,
-    video: Annotated[Path, typer.Option(exists=True, dir_okay=False, help="课堂录像。")],
-    slides: Annotated[
-        Path | None, typer.Option(exists=True, dir_okay=False, help="PDF 课件。")
-    ] = None,
+    recording: Annotated[
+        Path,
+        typer.Option(
+            "--recording",
+            "-r",
+            exists=True,
+            dir_okay=False,
+            help="课堂录像或录音，任何音视频格式。",
+        ),
+    ],
     lecture_date: Annotated[
         str | None, typer.Option("--date", help="上课日期，YYYY-MM-DD，默认今天。")
     ] = None,
@@ -62,8 +69,7 @@ def init(
             workspace,
             title=title or workspace.resolve().name,
             lecture_date=date.fromisoformat(lecture_date) if lecture_date else date.today(),
-            video=video,
-            slides=slides,
+            recording=recording,
         )
     except (WorkspaceError, ValueError) as error:
         _fail(str(error))
@@ -91,6 +97,9 @@ def run(
     except Exception:
         # 失败详情已由 StageFailed 事件打印
         raise typer.Exit(1) from None
+    for output in ("raw.md", "dehydrated.md", "guide.md"):
+        if (path := Path(workspace) / output).exists():
+            console.print(f"输出：{path}")
 
 
 @app.command()
@@ -190,6 +199,8 @@ def _print_event(event: PipelineEvent) -> None:
             console.print(f"[dim]· {stage}（缓存）[/dim]")
         case StageProgress(stage, done, total):
             console.print(f"  {stage} {done}/{total}")
+        case StageWarning(stage, message):
+            console.print(f"[yellow]! {stage}：{message}[/yellow]")
         case StageFinished(stage, elapsed):
             console.print(f"[green]✓ {stage}[/green] {elapsed:.1f}s")
         case StageFailed(stage, error):

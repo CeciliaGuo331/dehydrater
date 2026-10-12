@@ -15,6 +15,7 @@ from dehydrater.pipeline.events import (
     StageProgress,
     StageSkipped,
     StageStarted,
+    StageWarning,
 )
 from dehydrater.pipeline.stage import Stage, StageContext
 from dehydrater.pipeline.workspace import ArtifactStore, Workspace
@@ -94,6 +95,7 @@ class Runner:
             self._store,
             self._workspace,
             on_progress=lambda done, total: self._on_event(StageProgress(stage.name, done, total)),
+            on_warning=lambda message: self._on_event(StageWarning(stage.name, message)),
         )
         started = time.monotonic()
         try:

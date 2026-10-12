@@ -35,15 +35,15 @@ def test_config_check_lists_providers_without_keys(config: Path, keychain: FakeK
     result = runner.invoke(cli.app, ["config", "check", "--config", str(config)])
 
     assert result.exit_code == 1
-    assert "DEHYDRATER_KEY_CLEAN" in result.output
+    assert "DEHYDRATER_KEY_DEHYDRATE" in result.output
     assert "DEHYDRATER_KEY_TRANSCRIBE" not in result.output
 
 
 def test_key_set_stores_in_keychain(keychain: FakeKeychain) -> None:
-    result = runner.invoke(cli.app, ["key", "set", "clean"], input="secret\n")
+    result = runner.invoke(cli.app, ["key", "set", "dehydrate"], input="secret\n")
 
     assert result.exit_code == 0, result.output
-    assert keychain.entries == {"clean": "secret"}
+    assert keychain.entries == {"dehydrate": "secret"}
     assert "secret" not in result.output
 
 
@@ -53,7 +53,8 @@ def test_init_then_status(tmp_path: Path, config: Path, keychain: FakeKeychain) 
     workspace = tmp_path / "L01"
 
     init = runner.invoke(
-        cli.app, ["init", str(workspace), "--video", str(video), "--date", str(date(2026, 10, 12))]
+        cli.app,
+        ["init", str(workspace), "--recording", str(video), "--date", str(date(2026, 10, 12))],
     )
     status = runner.invoke(cli.app, ["status", str(workspace), "--config", str(config)])
 

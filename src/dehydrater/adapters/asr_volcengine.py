@@ -19,8 +19,8 @@ _STATUS_PROCESSING = "20000001"
 _STATUS_QUEUED = "20000002"
 _STATUS_SILENT = "20000003"
 _SUPPORTED_FORMATS = frozenset({"mp3", "wav", "ogg"})
-# 极速版在服务端同步识别一整节课，读超时要留足
-_TIMEOUT = httpx.Timeout(connect=10, write=120, read=900, pool=10)
+# 两小时的课 base64 后约 40MB，上行慢时上传要好几分钟；极速版还要在服务端同步识别整节课
+_TIMEOUT = httpx.Timeout(connect=10, write=900, read=900, pool=10)
 
 
 class VolcengineApi(StrEnum):

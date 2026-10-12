@@ -5,6 +5,9 @@ __pycache__/
 dist/
 result
 
+# 测试文件
+_test_data/
+
 # 密钥
 apikey.txt
 .env

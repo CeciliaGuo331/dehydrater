@@ -1,37 +1,42 @@
-"""把结构化产物渲染成用户可见的 Markdown。
+"""把结构化产物渲染成用户可见的 Markdown，每份输出一个阶段，产出后立即可读。"""
 
-三份输出各自一个阶段，这样 transcript.md 和 notices.md 不必等讲义生成完才出现。
-"""
-
-from dehydrater.pipeline.artifacts import CLEAN_TRANSCRIPT, DECK, LECTURE, NOTES, NOTICES
+from dehydrater.pipeline.artifacts import DEHYDRATED_TRANSCRIPT, GUIDE, LECTURE, RAW_TRANSCRIPT
 from dehydrater.pipeline.stage import Stage, StageContext
+from dehydrater.pipeline.templating import TemplateSet
 
 
-class RenderNoticesStage(Stage):
-    name = "render_notices"
-    inputs = (LECTURE, NOTICES)
-    outputs = ()
+class _RenderStage(Stage):
     always_run = True
+    outputs = ()
+
+    def __init__(self, templates: TemplateSet) -> None:
+        self._templates = templates
+
+    def _write(self, ctx: StageContext, template: str, output: str, **variables: object) -> None:
+        text = self._templates.render(template, lecture=ctx.read(LECTURE), **variables)
+        (ctx.workspace.root / output).write_text(text, encoding="utf-8")
+
+
+class RenderRawStage(_RenderStage):
+    name = "render_raw"
+    inputs = (LECTURE, RAW_TRANSCRIPT)
 
     async def run(self, ctx: StageContext) -> None:
-        raise NotImplementedError("计划在 S4 实现")
+        self._write(ctx, "raw.md.j2", "raw.md", transcript=ctx.read(RAW_TRANSCRIPT))
 
 
-class RenderTranscriptStage(Stage):
-    name = "render_transcript"
-    inputs = (LECTURE, CLEAN_TRANSCRIPT)
-    outputs = ()
-    always_run = True
+class RenderDehydratedStage(_RenderStage):
+    name = "render_dehydrated"
+    inputs = (LECTURE, DEHYDRATED_TRANSCRIPT)
 
     async def run(self, ctx: StageContext) -> None:
-        raise NotImplementedError("计划在 S4 实现")
+        transcript = ctx.read(DEHYDRATED_TRANSCRIPT)
+        self._write(ctx, "dehydrated.md.j2", "dehydrated.md", transcript=transcript)
 
 
-class RenderLectureStage(Stage):
-    name = "render_lecture"
-    inputs = (LECTURE, DECK, NOTES)
-    outputs = ()
-    always_run = True
+class RenderGuideStage(_RenderStage):
+    name = "render_guide"
+    inputs = (LECTURE, GUIDE)
 
     async def run(self, ctx: StageContext) -> None:
-        raise NotImplementedError("计划在 S6 实现")
+        self._write(ctx, "guide.md.j2", "guide.md", guide=ctx.read(GUIDE))

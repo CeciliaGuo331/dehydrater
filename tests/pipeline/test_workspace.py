@@ -11,15 +11,12 @@ def test_create_and_load_lecture(tmp_path: Path) -> None:
     video.write_bytes(b"video")
     root = tmp_path / "L03"
 
-    Workspace.create(
-        root, title="进程调度", lecture_date=date(2026, 10, 12), video=video, slides=None
-    )
+    Workspace.create(root, title="进程调度", lecture_date=date(2026, 10, 12), recording=video)
     lecture = Workspace(root).load_lecture()
 
     assert lecture.title == "进程调度"
     assert lecture.date == date(2026, 10, 12)
-    assert lecture.video.size == len(b"video")
-    assert lecture.slides is None
+    assert lecture.recording.size == len(b"video")
 
 
 def test_files_inside_workspace_are_stored_relative(tmp_path: Path) -> None:
@@ -35,7 +32,7 @@ def test_missing_source_file_is_reported(tmp_path: Path) -> None:
     video = tmp_path / "lecture.mp4"
     video.write_bytes(b"video")
     workspace = Workspace.create(
-        tmp_path / "L03", title="t", lecture_date=date(2026, 1, 1), video=video, slides=None
+        tmp_path / "L03", title="t", lecture_date=date(2026, 1, 1), recording=video
     )
     video.unlink()
 
@@ -46,9 +43,7 @@ def test_missing_source_file_is_reported(tmp_path: Path) -> None:
 def test_create_refuses_existing_workspace(tmp_path: Path) -> None:
     video = tmp_path / "v.mp4"
     video.write_bytes(b"")
-    Workspace.create(tmp_path, title="t", lecture_date=date(2026, 1, 1), video=video, slides=None)
+    Workspace.create(tmp_path, title="t", lecture_date=date(2026, 1, 1), recording=video)
 
     with pytest.raises(WorkspaceError, match="已经是一个工作区"):
-        Workspace.create(
-            tmp_path, title="t", lecture_date=date(2026, 1, 1), video=video, slides=None
-        )
+        Workspace.create(tmp_path, title="t", lecture_date=date(2026, 1, 1), recording=video)

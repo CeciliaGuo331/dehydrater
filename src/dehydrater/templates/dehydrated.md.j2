@@ -1,0 +1,8 @@
+# {{ lecture.title }} · 脱水逐字稿
+
+> {{ lecture.date }} · 由原始逐字稿精炼改写，保留全部信息点；每段开头为对应的录音时间
+
+{% for paragraph in transcript.segments %}
+`{{ paragraph.start | timecode }}` {{ paragraph.text }}
+
+{% endfor %}

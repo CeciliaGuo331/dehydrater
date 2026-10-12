@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 from dehydrater.domain.base import Seconds
-from dehydrater.domain.slides import SlidePage
 from dehydrater.domain.transcript import Transcript
 
 type Fingerprint = Mapping[str, str | int | float | bool | None]
@@ -21,19 +20,8 @@ class ExtractedAudio:
 class AudioExtractor(Protocol):
     def fingerprint(self) -> Fingerprint: ...
 
-    def extract(self, video: Path, dest: Path) -> ExtractedAudio:
-        """把视频的音轨转成适合 ASR 的音频，写入 dest。"""
-        ...
-
-
-class SlideReader(Protocol):
-    def fingerprint(self) -> Fingerprint: ...
-
-    def read(self, pdf: Path, image_dir: Path) -> list[SlidePage]:
-        """读取课件每页的文本，并把页面渲染图写入 image_dir。
-
-        返回的 SlidePage.image 是 image_dir 下的绝对路径，由调用方负责转成相对路径。
-        """
+    def extract(self, recording: Path, dest: Path) -> ExtractedAudio:
+        """把录像或录音的音轨转成适合 ASR 的音频，写入 dest。"""
         ...
 
 
@@ -69,4 +57,6 @@ class ChatReply:
 class ChatModel(Protocol):
     def fingerprint(self) -> Fingerprint: ...
 
-    async def complete(self, messages: Sequence[ChatMessage]) -> ChatReply: ...
+    async def complete(self, messages: Sequence[ChatMessage], *, json: bool = False) -> ChatReply:
+        """json=True 时要求服务端保证输出是一个合法的 JSON 对象（OpenAI 的 JSON 模式）。"""
+        ...

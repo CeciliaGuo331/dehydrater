@@ -34,8 +34,7 @@ class _LectureManifest(BaseModel):
 
     title: str
     date: date
-    video: Path
-    slides: Path | None = None
+    recording: Path
 
 
 class Workspace:
@@ -45,25 +44,23 @@ class Workspace:
     .cache/artifacts/   各阶段产物（JSON）
     .cache/stages/      各阶段的缓存元数据
     .cache/files/       各阶段的二进制中间文件（如音频）
-    assets/             讲义引用的图片
-    *.md                最终输出
+    raw.md              原始逐字稿
+    dehydrated.md       脱水逐字稿
+    guide.md            导读
     """
 
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
 
     @classmethod
-    def create(
-        cls, root: Path, *, title: str, lecture_date: date, video: Path, slides: Path | None
-    ) -> "Workspace":
+    def create(cls, root: Path, *, title: str, lecture_date: date, recording: Path) -> "Workspace":
         if (root / LECTURE_FILE).exists():
             raise WorkspaceError(f"{root} 已经是一个工作区")
         workspace = cls(root)
         manifest = _LectureManifest(
             title=title,
             date=lecture_date,
-            video=workspace.portable_path(video),
-            slides=workspace.portable_path(slides) if slides else None,
+            recording=workspace.portable_path(recording),
         )
         workspace.root.mkdir(parents=True, exist_ok=True)
         data = manifest.model_dump(mode="json", exclude_none=True)
@@ -77,10 +74,6 @@ class Workspace:
     @property
     def cache_dir(self) -> Path:
         return self.root / ".cache"
-
-    @property
-    def assets_dir(self) -> Path:
-        return self.root / "assets"
 
     def files_dir(self, stage: str) -> Path:
         """某个阶段专用的二进制文件目录。"""
@@ -106,8 +99,7 @@ class Workspace:
         return Lecture(
             title=manifest.title,
             date=manifest.date,
-            video=self._source_file(manifest.video),
-            slides=self._source_file(manifest.slides) if manifest.slides else None,
+            recording=self._source_file(manifest.recording),
         )
 
     def _source_file(self, path: Path) -> SourceFile:

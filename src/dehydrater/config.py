@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Annotated, ClassVar, Literal
 
 import platformdirs
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError, model_validator
 
 
 class ConfigError(Exception):
@@ -29,6 +29,8 @@ class OpenAICompatibleProvider(_Strict):
 
     kind: Literal["openai-compatible"]
     base_url: str
+    max_concurrency: int = Field(default=4, ge=1)
+    """同时进行的请求数上限。"""
 
 
 class VolcengineAsrProvider(_Strict):
@@ -49,20 +51,21 @@ class TaskConfig(_Strict):
     model: str
     """LLM 的模型名；火山 ASR 则为资源 ID，例如 volc.seedasr.auc。"""
     temperature: float | None = None
+    max_tokens: int | None = None
+    extra_body: dict[str, JsonValue] = {}
+    """原样附加到请求体中的厂商参数，例如方舟的 {thinking = {type = "disabled"}}。"""
 
 
 class TasksConfig(_Strict):
     transcribe: TaskConfig
-    clean: TaskConfig
-    extract_notices: TaskConfig
-    write_sections: TaskConfig
+    dehydrate: TaskConfig
+    guide: TaskConfig
 
     def required_capabilities(self) -> dict[str, tuple[TaskConfig, Capability]]:
         return {
             "transcribe": (self.transcribe, Capability.ASR),
-            "clean": (self.clean, Capability.CHAT),
-            "extract_notices": (self.extract_notices, Capability.CHAT),
-            "write_sections": (self.write_sections, Capability.CHAT),
+            "dehydrate": (self.dehydrate, Capability.CHAT),
+            "guide": (self.guide, Capability.CHAT),
         }
 
 

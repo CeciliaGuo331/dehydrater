@@ -46,10 +46,12 @@ class StageContext:
         store: ArtifactStore,
         workspace: Workspace,
         on_progress: Callable[[int, int], None],
+        on_warning: Callable[[str], None],
     ) -> None:
         self._stage = stage
         self._store = store
         self._on_progress = on_progress
+        self._on_warning = on_warning
         self.workspace = workspace
         self.usage = TokenUsage(prompt_tokens=0, completion_tokens=0)
 
@@ -71,6 +73,9 @@ class StageContext:
 
     def report_progress(self, done: int, total: int) -> None:
         self._on_progress(done, total)
+
+    def warn(self, message: str) -> None:
+        self._on_warning(message)
 
     def record_usage(self, usage: TokenUsage) -> None:
         self.usage = TokenUsage(

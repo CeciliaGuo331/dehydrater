@@ -19,12 +19,12 @@ class Lecture(DomainModel):
     title: str
     date: date
     """上课日期，用于把"下周三"之类的相对日期换算成绝对日期。"""
-    video: SourceFile
-    slides: SourceFile | None
+    recording: SourceFile
+    """课堂录像或录音，任何带音轨的音视频文件均可。"""
 
 
 class AudioFile(DomainModel):
-    """从视频中抽出的音频。"""
+    """从录像或录音中抽出、统一格式后的音频。"""
 
     path: Path
     """相对于工作区根目录的路径。"""
