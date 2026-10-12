@@ -107,6 +107,8 @@ def test_setup_retry_question_stays_visible(tmp_path: Path) -> None:
     for answer in (unreachable, "", "key"):
         child.expect(r"(接入地址|资源 ID|API Key)")
         child.sendline(answer)
+    # 先等验证结束（CI 机器上可能较慢），再看屏幕：此时提问应当可见，而不是仍在转圈
+    child.expect("验证失败")
     assert "重新输入这一项" in screen.settle()
 
     child.sendline("n")

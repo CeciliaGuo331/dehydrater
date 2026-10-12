@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from dehydrater.cli.shell_profile import ShellProfile, detect_shell, write_env_file
@@ -6,11 +7,13 @@ _VARIABLES = {"DEHYDRATER_DEHYDRATE_KEY": "k 1", "DEHYDRATER_DEHYDRATE_MODEL": "
 
 
 def test_detects_shell_profile(tmp_path: Path) -> None:
-    assert detect_shell({"SHELL": "/usr/bin/zsh"}, tmp_path).path == tmp_path / ".zshrc"
-    assert detect_shell({"SHELL": "/bin/fish"}, tmp_path).path == (
-        tmp_path / ".config/fish/config.fish"
-    )
-    assert detect_shell({"SHELL": "/bin/tcsh"}, tmp_path).path is None
+    def detect(shell: str) -> Path | None:
+        return detect_shell({"SHELL": shell}, tmp_path, os_name="posix").path
+
+    assert detect("/usr/bin/zsh") == tmp_path / ".zshrc"
+    assert detect("/bin/fish") == tmp_path / ".config/fish/config.fish"
+    assert detect("/bin/tcsh") is None
+    assert detect_shell({}, tmp_path, os_name="nt").name == "powershell"
 
 
 def test_snippet_syntax_per_shell() -> None:
@@ -40,5 +43,6 @@ def test_env_file_is_private(tmp_path: Path) -> None:
 
     write_env_file(path, _VARIABLES)
 
-    assert path.stat().st_mode & 0o777 == 0o600
+    if sys.platform != "win32":  # Windows 上 chmod 只能控制只读，权限位没有意义
+        assert path.stat().st_mode & 0o777 == 0o600
     assert "DEHYDRATER_DEHYDRATE_KEY='k 1'" in path.read_text()

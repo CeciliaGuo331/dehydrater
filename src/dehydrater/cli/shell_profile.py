@@ -37,9 +37,11 @@ class ShellProfile:
         self.path.write_text(updated, encoding="utf-8")
 
 
-def detect_shell(env: Mapping[str, str] = os.environ, home: Path | None = None) -> ShellProfile:
+def detect_shell(
+    env: Mapping[str, str] = os.environ, home: Path | None = None, os_name: str = os.name
+) -> ShellProfile:
     home = home or Path.home()
-    if os.name == "nt":
+    if os_name == "nt":
         return ShellProfile("powershell", None)
     name = Path(env.get("SHELL", "")).name
     match name:

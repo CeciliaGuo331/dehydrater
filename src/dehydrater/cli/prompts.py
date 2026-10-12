@@ -1,5 +1,6 @@
 """交互式输入。各流程依赖 Ask 协议而不是具体实现，测试时可以换成预设回答。"""
 
+import os
 import shlex
 from collections.abc import Iterable
 from pathlib import Path
@@ -31,9 +32,17 @@ def terminal_ask(
     return answer or default
 
 
-def split_paths(text: str) -> list[Path]:
-    """按 shell 规则拆分：含空格的路径需要用引号括起来，或用反斜杠转义。"""
-    return [Path(part).expanduser() for part in shlex.split(text)]
+def split_paths(text: str, *, windows: bool = os.name == "nt") -> list[Path]:
+    """按 shell 规则拆分：含空格的路径需要用引号括起来。
+
+    POSIX 下反斜杠是转义符（拖入终端时空格会被转义成 "\\ "）；Windows 下反斜杠是路径分隔符，
+    只能用引号，因此按非 POSIX 规则拆分后再去掉引号。
+    """
+    if windows:
+        parts = [part.strip("\"'") for part in shlex.split(text, posix=False)]
+    else:
+        parts = shlex.split(text)
+    return [Path(part).expanduser() for part in parts]
 
 
 class _LastPathCompleter(Completer):
