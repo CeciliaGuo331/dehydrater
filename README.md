@@ -1,40 +1,241 @@
 # dehydrater
 
-把课堂录像或录音（加上可选的 PDF 课件）"脱水"成三份 Markdown：
+把一节课的录音（或录像）和 PDF 课件"脱水"成三份 Markdown：
 
-- `raw.md`：原始逐字稿，每句带时间戳
-- `dehydrated.md`：脱水逐字稿，删去口癖、重复、闲聊，修正识别错误
-- `notes.md`：课堂笔记，以课件为主线、融入老师讲解，含概览、课堂通知和术语表
+| 文件 | 内容 |
+| --- | --- |
+| `notes.md` | **笔记**：以课件为主线，融入老师的口头讲解、例子和强调的重点；含概览、课堂通知、术语表。出自讲解的内容标有录音时间 `▶ 42:05`，可以回听核对 |
+| `dehydrated.md` | **脱水稿**：讲课全文精炼成书面文字，约为原文的四分之一 |
+| `raw.md` | **原始稿**：语音识别原文，每句带时间 |
 
-当前为 v0.1 功能验证版，只提供 CLI。计划见 [docs/plan-v0.1.md](docs/plan-v0.1.md)。
+当前版本 v0.1 只提供命令行，介绍见 [docs/v0.1.md](docs/v0.1.md)，架构与后续计划见 [docs/design.md](docs/design.md)。
 
 ## 快速上手
 
 ```bash
-# 安装
-uv tool install git+https://github.com/CeciliaGuo331/dehydrater
-
-# 首次使用：填写各项服务的接入地址、模型和 API Key
-dehydrater setup        
-
-# 交互式整理一节课
-dehydrater         
-
-# 更新
-uv tool upgrade dehydrater
+uv tool install git+https://github.com/CeciliaGuo331/dehydrater   # 安装
+dehydrater setup                                                  # 首次使用：设置各项服务
+dehydrater                                                        # 交互式整理一节课
 ```
 
-也可以复制 [`.env.example`](.env.example) 为 `.env` 来配置。脚本用法（`process`、`status`、`check`）、配置细节和常见问题见 **[使用指南](docs/usage.md)**。
+## 1. 安装与更新
+
+需要 Python 3.13 或更高版本，以及 [uv](https://docs.astral.sh/uv/)。
+
+```bash
+uv tool install git+https://github.com/CeciliaGuo331/dehydrater   # 安装后可在任何目录使用 dehydrater 命令
+uv tool upgrade dehydrater                                        # 更新到最新提交
+```
+
+如果 `upgrade` 后没有拉到新代码（版本号未变时 uv 可能沿用缓存），强制重新安装：
+
+```bash
+uv tool install --reinstall git+https://github.com/CeciliaGuo331/dehydrater
+```
+
+更新不影响已有的设置和整理结果。
+
+## 2. 设置（只需一次）
+
+dehydrater 调用四项在线服务，每一项都需要**接入地址、模型、API Key** 三项设置：
+
+| 任务 | 作用 | 默认服务 |
+| --- | --- | --- |
+| 录音文件识别 | 录音 → 逐字稿 | 火山引擎「豆包语音」录音文件识别 2.0 |
+| 逐字稿脱水 | 逐字稿 → 脱水稿 | 火山方舟 `doubao-seed-2-1-lite` |
+| 笔记大纲 | 把课件和讲课内容分章 | 火山方舟 `doubao-seed-2-1-pro` |
+| 笔记撰写 | 逐章撰写笔记 | 火山方舟 `doubao-seed-2-1-pro` |
+
+地址和模型有默认值，API Key 需要自己申请：
+
+- **豆包语音**：火山引擎控制台 → 豆包语音 → 开通「录音文件识别」→ 创建 API Key
+- **火山方舟**：火山方舟控制台 → 开通管理（开通上面用到的模型）→ API Key 管理
+
+两者是不同的产品，Key 不通用。
+
+### 方式一：交互式设置（推荐）
+
+```bash
+dehydrater setup
+```
+
+按提示逐项填写，方括号里是默认值，直接回车即采用；后面的任务会沿用前面同一地址的 Key。每填完一个任务会立即验证能否连通。最后选择保存方式：
+
+1. **写入 shell 启动文件**（`~/.zshrc`、`~/.bashrc` 或 fish 的 `config.fish`）：执行 `source` 或打开新终端后生效。重复运行 setup 只会替换原来那一段，不会重复追加。
+2. **保存到 dehydrater 的配置目录**（Linux 为 `~/.config/dehydrater/env`，权限仅本人可读）：立即生效。
+3. **只显示配置片段**，自己复制到合适的地方。
+
+### 方式二：`.env` 文件
+
+复制 [`.env.example`](.env.example) 为 `.env` 并填写，里面有每一项的详细说明。
+
+### 配置的查找顺序
+
+每一项单独查找，先找到的生效：
+
+1. 环境变量
+2. 当前目录向上找到的第一个 `.env`
+3. dehydrater 配置目录下的 `env` 文件
+4. 内置默认值（只有地址和模型有）
+
+变量名为 `DEHYDRATER_<任务>_URL`、`DEHYDRATER_<任务>_MODEL`、`DEHYDRATER_<任务>_KEY`，任务为 `TRANSCRIBE`、`DEHYDRATE`、`OUTLINE`、`WRITE_NOTES`。值为空等同于未设置。
+
+### 检查设置
+
+```bash
+dehydrater check
+```
+
+逐项显示设置是否完整、服务能否连通。
+
+## 3. 整理一节课（交互式）
+
+```bash
+dehydrater
+```
+
+依次回答三个问题，都不能留空：
+
+```text
+开始整理课程
+
+课堂名称: 操作系统 第3-4节 进程线程调度
+  录音或录像一个，PDF 课件零到多个，用空格分隔。
+  路径含空格时用引号括起来（把文件拖进终端会自动处理）；按 Tab 可补全路径。
+课堂资料: '~/课程/操作系统 2026-09-30.ts' ~/课程/调度.pdf ~/课程/线程.pdf
+输出路径: ~/笔记/OS-0930
+```
+
+- **课堂资料**：PDF 文件当作课件，其余文件必须是带音轨的音视频（mp4、ts、mkv、mov、m4a、mp3、wav 等），且恰好一个。多份课件按输入顺序合并，笔记里会标明出自哪一份的第几页。
+- **输出路径**：一个目录，不存在会自动创建；含空格也不需要加引号。建议每节课用单独的目录。
+
+确认信息后开始整理，界面上实时显示每一步的进度：
+
+```text
+  ✓  提取音频    14 秒
+  ✓  读取课件    0 秒
+  ⠼  语音转写    3 分 12 秒
+  ·  逐字稿脱水
+  ·  撰写笔记
+```
+
+一节两小时的课大约需要 15 分钟，大部分时间花在上传录音和语音识别上。完成后会显示各步骤的耗时与 token 用量（见下文 `status`），以及三份文件的路径。
+
+**上课日期**不需要填写：先从录音文件名中找（如 `2026-09-30`、`20260930`、`2026年9月30日`），找不到就用视频元数据中的录制时间，再找不到用文件修改时间。确认界面会显示推断结果；需要指定时请用脚本形式的 `--date`。
+
+**笔记只覆盖这节课实际讲到的课件页**：一份课件通常要讲好几节课，没讲到的页不会出现在笔记里。
+
+## 4. 在脚本中使用
+
+### `dehydrater process`：非交互式整理
+
+```bash
+dehydrater process \
+    --name "操作系统 第3-4节" \
+    --input ~/课程/第3讲.mp4 --input ~/课程/调度.pdf \
+    --output ~/笔记/OS-03
+```
+
+| 参数 | 说明 |
+| --- | --- |
+| `-n, --name` | 课堂名称（必填） |
+| `-i, --input` | 课堂资料，可重复（必填）：恰好一个录音或录像，零到多个 PDF |
+| `-o, --output` | 输出目录（必填） |
+| `--date` | 上课日期 `YYYY-MM-DD`，默认自动推断 |
+| `--redo` | 从某一步起重做：`transcribe`、`dehydrate`、`notes` |
+
+退出码：成功为 0，出错为 1，按 Ctrl+C 中断为 130。
+
+批量处理示例：
+
+```bash
+for video in ~/课程/操作系统/*.mp4; do
+    name=$(basename "$video" .mp4)
+    dehydrater process -n "$name" -i "$video" -i "${video%.mp4}.pdf" -o ~/笔记/"$name"
+done
+```
+
+### `dehydrater status`：查看进度与用量
+
+```bash
+dehydrater status ~/笔记/OS-03
+```
+
+```text
+       步骤             耗时       录音    输入 token    输出 token
+  ✓    提取音频         14 秒
+  ✓    读取课件          0 秒
+  ✓    语音转写    9 分 06 秒    1:59:10
+  ✓    逐字稿脱水       36 秒                   40,815         7,185
+  ✓    撰写笔记    1 分 37 秒                   39,047        11,673
+       合计       11 分 34 秒    1:59:10        79,862        18,858
+```
+
+各步骤的数字是产出当前结果的完整用量：沿用上次结果的部分也按当初的用量计入。
+
+### `dehydrater check`：检查设置与连通性
+
+设置不完整或有服务不可用时退出码为 1，可用于脚本中的前置检查。
+
+## 5. 重新运行与断点续做
+
+- **中断或失败后**：重新运行同样的命令（或交互式输入同样的输出路径），已完成的步骤直接沿用，不会重复调用、重复花钱。
+- **换了模型或配置后**：重新运行即可，只有受影响的步骤会重做。
+- **想强制重做某一步**：`dehydrater process ... --redo notes`。这一步及其之后的步骤都会重做。
+- **同一个输出路径只能用于同一节课**：如果其中已经整理过另一个录音，会报错，请换一个路径。
+- 三份 `.md` 每次运行都会重新生成。需要手改的话，请先复制一份。
+
+### 输出目录的结构
+
+```text
+输出目录/
+├── notes.md  dehydrated.md  raw.md   # 结果
+├── lecture.toml                      # 这节课的输入信息（可编辑，下次运行生效）
+└── cache/                            # 中间产物，删除它等于从头开始
+    ├── audio.mp3                     # 从录音中提取的音频，送去语音识别的就是它
+    ├── dehydrater.log                # 这节课每次整理的完整日志
+    ├── artifacts/                    # 各步骤的结构化结果（逐字稿、大纲等 JSON）
+    ├── stages/                       # 各步骤的完成记录、耗时、token 用量
+    └── dehydrate/ write_notes/       # 分块、分章的模型输出，中断后续做时复用
+```
+
+## 6. 日志
+
+排查问题时请先看日志，界面上只显示简短的结论：
+
+- **整理日志**：输出目录下的 `cache/dehydrater.log`，记录每一步的开始和结束、语音识别每次上传和查询的状态码与 logid、每次调用模型的耗时和 token、完整的错误堆栈，以及底层网络连接的每一个环节。
+- **全局日志**：所有命令（包括 `setup`、`check`）都会记录到用户日志目录，Linux 为 `~/.local/state/dehydrater/log/dehydrater.log`，自动轮转，最多保留约 20MB。每次运行都会记下各项设置取自哪里（API Key 只记录来源，不记录内容）。
+
+日志中不包含 API Key。向他人求助时可以附上日志，但其中有课程内容片段和文件路径。
+
+## 7. 常见问题
+
+| 现象 | 原因与解决 |
+| --- | --- |
+| `尚未完成设置` | 运行 `dehydrater setup`，或检查 `.env` 是否在当前目录或其上级目录 |
+| `45000010 Invalid X-Api-Key` | 录音文件识别的 Key 无效。注意它要用豆包语音控制台的 Key（形如 `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`），不是方舟的 |
+| `45000030 requested resource not granted` | 豆包语音中没有开通该资源 ID 对应的版本 |
+| `ModelNotOpen` | 方舟中还没有开通该模型，到「开通管理」中开通 |
+| 语音转写很慢 | 主要是上传耗时，两小时的录音约 30MB；网络上行慢时可能需要十几分钟 |
+| 语音转写报 `网络连接中断（ReadError）` 或 `网络超时` | 上传完后服务器还要一两分钟才响应，期间连接可能被网络设备断开。程序已开启 TCP keepalive 并会自动重试 3 次；仍然失败时请看日志中 `提交任务` 相关的行，重新运行即可续做 |
+| `课堂资料中需要恰好一个录音或录像` | 检查是否漏了录音，或者多放了一个；路径含空格时要加引号 |
+| 笔记里缺了某些课件页 | 只有这节课实际讲到的课件页会进入笔记，这是有意的设计 |
 
 ## 开发
 
 ```bash
+git clone https://github.com/CeciliaGuo331/dehydrater && cd dehydrater
+uv sync
+uv run dehydrater --help                  # 从源码运行
+
 uv run ruff format && uv run ruff check   # 格式与 lint
-uv run basedpyright                        # 类型检查（strict）
-uv run lint-imports                        # 分层约束
-uv run pytest
+uv run basedpyright                       # 类型检查（strict）
+uv run lint-imports                       # 分层约束
+uv run pytest                             # 含伪终端测试：在真实终端中运行 dehydrater 并检查屏幕内容
 ```
+
+NixOS 用户可以先 `nix develop` 进入开发环境。代码结构与设计取舍见 [docs/design.md](docs/design.md)。
 
 ## 许可证
 
-AGPL-3.0-or-later
+AGPL-3.0-or-later（依赖的 PyMuPDF 为 AGPL）。

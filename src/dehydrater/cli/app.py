@@ -36,7 +36,7 @@ USAGE = """\
   dehydrater process   非交互式整理一节课
   dehydrater status    查看一节课的整理进度
   dehydrater check     检查设置是否完整、各项服务能否连通
-详见 dehydrater <命令> --help，或项目文档 docs/usage.md。"""
+详见 dehydrater <命令> --help，或项目的 README。"""
 
 _SUBCOMMAND = {"help_option_names": ["--help", "-h"]}
 
