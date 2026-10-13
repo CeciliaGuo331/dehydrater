@@ -14,7 +14,7 @@ from dehydrater.pipeline.memo import JsonMemo
 from dehydrater.pipeline.stage import Stage, StageContext
 from dehydrater.pipeline.structured import InvalidReplyError, complete_json
 from dehydrater.pipeline.templating import TemplateSet
-from dehydrater.ports import ChatMessage, ChatModel, Fingerprint
+from dehydrater.ports import ChatMessage, ChatModel, Fingerprint, TokenUsage
 
 _PROMPTS = ("dehydrate.system.j2", "dehydrate.user.j2")
 _CHUNK_CHARS = 2500
@@ -56,11 +56,12 @@ class DehydrateStage(Stage):
 
         async def dehydrate_chunk(number: int, indices: range) -> _Reply:
             nonlocal done
-            reply = await memo.get_or_compute(
+            reply, usage = await memo.get_or_compute(
                 {"fingerprint": dict(self.fingerprint()), "lines": self._lines(raw, indices)},
                 _Reply,
-                lambda: self._ask(ctx, raw, number, len(chunks), indices),
+                lambda: self._ask(raw, number, len(chunks), indices),
             )
+            ctx.record_usage(usage)
             done += 1
             ctx.report_progress(done, len(chunks))
             return reply
@@ -83,8 +84,8 @@ class DehydrateStage(Stage):
         ctx.write(DEHYDRATED_TRANSCRIPT, dehydrated)
 
     async def _ask(
-        self, ctx: StageContext, raw: Transcript, number: int, total: int, indices: range
-    ) -> _Reply:
+        self, raw: Transcript, number: int, total: int, indices: range
+    ) -> tuple[_Reply, TokenUsage]:
         messages = [
             ChatMessage("system", self._prompts.render("dehydrate.system.j2")),
             ChatMessage(
@@ -100,8 +101,7 @@ class DehydrateStage(Stage):
         reply = await complete_json(
             self._chat, messages, _Reply, check=lambda r: _check_references(r, indices)
         )
-        ctx.record_usage(reply.usage)
-        return reply.value
+        return reply.value, reply.usage
 
     @staticmethod
     def _lines(raw: Transcript, indices: range) -> list[tuple[int, str]]:

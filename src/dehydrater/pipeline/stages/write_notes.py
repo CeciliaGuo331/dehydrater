@@ -17,7 +17,7 @@ from dehydrater.pipeline.memo import JsonMemo
 from dehydrater.pipeline.stage import Stage, StageContext
 from dehydrater.pipeline.structured import InvalidReplyError, complete_checked
 from dehydrater.pipeline.templating import TemplateSet
-from dehydrater.ports import ChatMessage, ChatModel, Fingerprint
+from dehydrater.ports import ChatMessage, ChatModel, Fingerprint, TokenUsage
 
 _PROMPTS = ("notes.system.j2", "notes.user.j2")
 _CITATION = re.compile(r"\[@(\d+)\]")
@@ -63,11 +63,12 @@ class WriteNotesStage(Stage):
                 pages=_pages_of(deck, chapter),
                 paragraphs=_paragraphs_of(transcript, chapter),
             )
-            body = await memo.get_or_compute(
+            body, usage = await memo.get_or_compute(
                 {"fingerprint": dict(self.fingerprint()), "prompt": user_prompt},
                 _Body,
-                lambda: self._ask(ctx, user_prompt, len(transcript.segments)),
+                lambda: self._ask(user_prompt, len(transcript.segments)),
             )
+            ctx.record_usage(usage)
             done += 1
             ctx.report_progress(done, len(outline.chapters))
             return _to_chapter(chapter, slides, body.markdown, transcript)
@@ -83,7 +84,7 @@ class WriteNotesStage(Stage):
             ),
         )
 
-    async def _ask(self, ctx: StageContext, user_prompt: str, paragraph_count: int) -> _Body:
+    async def _ask(self, user_prompt: str, paragraph_count: int) -> tuple[_Body, TokenUsage]:
         messages = [
             ChatMessage("system", self._prompts.render("notes.system.j2")),
             ChatMessage("user", user_prompt),
@@ -91,8 +92,7 @@ class WriteNotesStage(Stage):
         reply = await complete_checked(
             self._chat, messages, lambda text: _parse_body(text, paragraph_count)
         )
-        ctx.record_usage(reply.usage)
-        return reply.value
+        return reply.value, reply.usage
 
 
 def _pages_of(deck: Deck, chapter: OutlineChapter) -> list[str]:

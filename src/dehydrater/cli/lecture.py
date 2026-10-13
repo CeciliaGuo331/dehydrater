@@ -15,14 +15,17 @@ from dehydrater.cli.console import console, fail
 from dehydrater.cli.display import ProgressDisplay
 from dehydrater.cli.logs import log_settings, workspace_log
 from dehydrater.cli.prompts import Ask, split_paths, terminal_ask
+from dehydrater.cli.report import report_table
 from dehydrater.config import Settings
 from dehydrater.domain.timecode import format_timecode
 from dehydrater.pipeline.workspace import Workspace, WorkspaceError
 from dehydrater.service import (
     LecturePlan,
+    LectureReport,
     PlanError,
     check_output,
     inspect_materials,
+    lecture_report,
     plan_lecture,
     run_lecture,
 )
@@ -76,8 +79,9 @@ def execute(plan: LecturePlan, settings: Settings, *, redo: str | None = None) -
         logger.info("===== 开始整理：%s =====", plan)
         log_settings(settings)
         outputs = _run_with_progress(plan, settings, redo, log_path)
-        logger.info("===== 整理完成 =====")
-    _show_outputs(outputs)
+        report = lecture_report(plan.output, settings)
+        logger.info("===== 整理完成：%s =====", report.total)
+    _show_outputs(outputs, report)
 
 
 def _run_with_progress(
@@ -108,12 +112,16 @@ def _run_with_progress(
     return outputs
 
 
-def _show_outputs(outputs: list[tuple[str, Path]]) -> None:
+def _show_outputs(outputs: list[tuple[str, Path]], report: LectureReport) -> None:
     console.print("\n[green]✓ 完成[/green]\n")
-    table = Table.grid(padding=(0, 4))
+    console.print(report_table(report, show_state=False))
+    console.print()
+    files = Table.grid(padding=(0, 4))
+    files.add_column()
+    files.add_column(overflow="fold")  # 路径太长时换行，而不是截断成省略号
     for label, path in outputs:
-        table.add_row(f"  {label}", str(path))
-    console.print(table)
+        files.add_row(f"  {label}", str(path))
+    console.print(files)
 
 
 def _require_settings() -> Settings:

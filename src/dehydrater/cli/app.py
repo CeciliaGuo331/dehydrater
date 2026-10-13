@@ -14,10 +14,11 @@ from dehydrater.cli import lecture
 from dehydrater.cli.console import console, fail
 from dehydrater.cli.display import describe
 from dehydrater.cli.logs import configure_logging, global_log_path, log_settings
+from dehydrater.cli.report import report_table
 from dehydrater.cli.setup import run_setup
 from dehydrater.config import Field, Task, env_name
 from dehydrater.pipeline.steps import REDOABLE
-from dehydrater.service import lecture_status, verify_task
+from dehydrater.service import lecture_report, verify_task
 
 USAGE = """\
 [bold]dehydrater[/bold] —— 把课堂录音整理成笔记
@@ -115,13 +116,10 @@ def process(
 
 @app.command(context_settings=_SUBCOMMAND)
 def status(output: Annotated[Path, typer.Argument(help="整理时指定的输出目录。")]) -> None:
-    """查看一节课各步骤是否完成及耗时。"""
+    """查看一节课各步骤是否完成，以及耗时和 token 用量。"""
     if not (output / "lecture.toml").exists():
         fail(f"{output} 中没有整理记录")
-    for item in lecture_status(output, load_settings()):
-        mark = "[green]✓[/green]" if item.done else "[dim]·[/dim]"
-        elapsed = f"{item.elapsed_seconds:.0f} 秒" if item.done else "未完成"
-        console.print(f"  {mark} {item.step.label:<8} {elapsed}")
+    console.print(report_table(lecture_report(output, load_settings()), show_state=True))
 
 
 @app.command(context_settings=_SUBCOMMAND)

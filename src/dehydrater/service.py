@@ -9,6 +9,7 @@ from dehydrater.bootstrap import build_media_probe, build_pipeline, build_verifi
 from dehydrater.config import Settings, Task
 from dehydrater.domain.base import Seconds
 from dehydrater.domain.dates import date_in_filename
+from dehydrater.pipeline.cache import StageMeta
 from dehydrater.pipeline.events import PipelineEvent
 from dehydrater.pipeline.runner import StageState
 from dehydrater.pipeline.steps import STEPS, Step, first_stage
@@ -118,24 +119,64 @@ async def run_lecture(
 
 
 @dataclass(frozen=True)
-class StepStatus:
+class Usage:
+    """一个步骤或整节课的耗时和用量。用量包括沿用缓存的部分，即产出结果的完整用量。"""
+
+    elapsed_seconds: float = 0.0
+    audio_seconds: float = 0.0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+    def __add__(self, other: "Usage") -> "Usage":
+        return Usage(
+            elapsed_seconds=self.elapsed_seconds + other.elapsed_seconds,
+            audio_seconds=self.audio_seconds + other.audio_seconds,
+            prompt_tokens=self.prompt_tokens + other.prompt_tokens,
+            completion_tokens=self.completion_tokens + other.completion_tokens,
+        )
+
+
+@dataclass(frozen=True)
+class StepReport:
     step: Step
     done: bool
-    elapsed_seconds: float
+    usage: Usage
 
 
-def lecture_status(output: Path, settings: Settings) -> list[StepStatus]:
+@dataclass(frozen=True)
+class LectureReport:
+    steps: list[StepReport]
+
+    @property
+    def total(self) -> Usage:
+        return sum((report.usage for report in self.steps), Usage())
+
+
+def lecture_report(output: Path, settings: Settings) -> LectureReport:
+    """按用户可见的步骤汇总一节课的耗时和 token 用量。"""
     statuses = {s.stage: s for s in build_pipeline(Workspace(output), settings).status()}
-    return [
-        StepStatus(
-            step=step,
-            done=all(statuses[stage].state == StageState.FRESH for stage in step.stages),
-            elapsed_seconds=sum(
-                meta.elapsed_seconds for stage in step.stages if (meta := statuses[stage].meta)
-            ),
-        )
-        for step in STEPS
-    ]
+    return LectureReport(
+        steps=[
+            StepReport(
+                step=step,
+                done=all(statuses[stage].state == StageState.FRESH for stage in step.stages),
+                usage=sum(
+                    (_stage_usage(meta) for stage in step.stages if (meta := statuses[stage].meta)),
+                    Usage(),
+                ),
+            )
+            for step in STEPS
+        ]
+    )
+
+
+def _stage_usage(meta: StageMeta) -> Usage:
+    return Usage(
+        elapsed_seconds=meta.elapsed_seconds,
+        audio_seconds=meta.audio_seconds,
+        prompt_tokens=meta.prompt_tokens,
+        completion_tokens=meta.completion_tokens,
+    )
 
 
 async def verify_task(settings: Settings, task: Task) -> None:

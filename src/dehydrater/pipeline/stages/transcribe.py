@@ -19,4 +19,5 @@ class TranscribeStage(Stage):
         transcript = await self._transcriber.transcribe(
             ctx.workspace.resolve(audio.path), TranscriptionHints()
         )
+        ctx.record_audio(audio.duration)
         ctx.write(RAW_TRANSCRIPT, transcript)

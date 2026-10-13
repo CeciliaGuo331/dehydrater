@@ -19,6 +19,8 @@ class StageMeta(BaseModel):
     elapsed_seconds: float
     prompt_tokens: int
     completion_tokens: int
+    audio_seconds: float = 0.0
+    """按录音时长计费的阶段（语音识别）处理的录音时长。"""
 
 
 def compute_cache_key(stage: Stage, store: ArtifactStore) -> str | None:
@@ -51,6 +53,7 @@ def save_meta(
     store: ArtifactStore,
     elapsed_seconds: float,
     usage: TokenUsage,
+    audio_seconds: float = 0.0,
 ) -> None:
     output_digests = {key.name: store.digest(key) or "" for key in stage.outputs}
     meta = StageMeta(
@@ -59,6 +62,7 @@ def save_meta(
         elapsed_seconds=elapsed_seconds,
         prompt_tokens=usage.prompt_tokens,
         completion_tokens=usage.completion_tokens,
+        audio_seconds=audio_seconds,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(meta.model_dump_json(indent=2), encoding="utf-8")

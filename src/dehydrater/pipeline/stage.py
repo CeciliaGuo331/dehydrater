@@ -58,6 +58,7 @@ class StageContext:
         self._on_warning = on_warning
         self.workspace = workspace
         self.usage = TokenUsage(prompt_tokens=0, completion_tokens=0)
+        self.audio_seconds = 0.0
 
     @property
     def files_dir(self) -> Path:
@@ -81,6 +82,10 @@ class StageContext:
     def warn(self, message: str) -> None:
         logger.warning("阶段 %s：%s", self._stage.name, message)
         self._on_warning(message)
+
+    def record_audio(self, seconds: float) -> None:
+        """记录按录音时长计费的用量。"""
+        self.audio_seconds += seconds
 
     def record_usage(self, usage: TokenUsage) -> None:
         self.usage = TokenUsage(

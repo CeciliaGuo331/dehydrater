@@ -122,6 +122,7 @@ class Runner:
             store=self._store,
             elapsed_seconds=elapsed,
             usage=ctx.usage,
+            audio_seconds=ctx.audio_seconds,
         )
         logger.info(
             "阶段 %s：完成，耗时 %.1f 秒，token %d/%d",

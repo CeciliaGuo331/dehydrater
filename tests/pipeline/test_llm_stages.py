@@ -18,6 +18,7 @@ from dehydrater.pipeline.artifacts import (
     OUTLINE,
     RAW_TRANSCRIPT,
 )
+from dehydrater.pipeline.cache import load_meta
 from dehydrater.pipeline.runner import Runner
 from dehydrater.pipeline.stages.dehydrate import DehydrateStage
 from dehydrater.pipeline.stages.outline import OutlineStage
@@ -81,6 +82,10 @@ async def test_dehydrate_reuses_chunk_results_when_forced(workspace: Workspace) 
     await runner.run(force_from="dehydrate")
 
     assert len(chat.calls) == 1
+    # 沿用缓存的块照样计入 token：统计的是产出这份结果的完整成本
+    meta = load_meta(workspace.stage_meta_path("dehydrate"))
+    assert meta is not None
+    assert (meta.prompt_tokens, meta.completion_tokens) == (10, 5)
 
 
 _DECK = Deck(

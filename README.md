@@ -11,9 +11,17 @@
 ## 快速上手
 
 ```bash
+# 安装
 uv tool install git+https://github.com/CeciliaGuo331/dehydrater
-dehydrater setup        # 首次使用：填写各项服务的接入地址、模型和 API Key
-dehydrater              # 交互式整理一节课
+
+# 首次使用：填写各项服务的接入地址、模型和 API Key
+dehydrater setup        
+
+# 交互式整理一节课
+dehydrater         
+
+# 更新
+uv tool upgrade dehydrater
 ```
 
 也可以复制 [`.env.example`](.env.example) 为 `.env` 来配置。脚本用法（`process`、`status`、`check`）、配置细节和常见问题见 **[使用指南](docs/usage.md)**。

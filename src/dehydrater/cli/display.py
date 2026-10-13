@@ -111,18 +111,18 @@ def _row(progress: _StepProgress) -> tuple[RenderableType, str, str]:
             return Text("  ·", "dim"), f"[dim]{label}[/dim]", ""
         case _State.RUNNING:
             assert progress.started_at is not None
-            elapsed = _duration(time.monotonic() - progress.started_at)
+            elapsed = format_duration(time.monotonic() - progress.started_at)
             return Spinner("dots", style="cyan"), label, f"{progress.detail}  {elapsed}".strip()
         case _State.DONE:
             # 渲染类阶段每次都会执行但几乎不耗时，不能据此判断"重新做过"
             if progress.reused and progress.elapsed < 1:
                 return Text("  ✓", "green"), label, "[dim]沿用上次结果[/dim]"
-            return Text("  ✓", "green"), label, _duration(progress.elapsed)
+            return Text("  ✓", "green"), label, format_duration(progress.elapsed)
         case _State.FAILED:
             return Text("  ✗", "red"), f"[red]{label}[/red]", ""
 
 
-def _duration(seconds: float) -> str:
+def format_duration(seconds: float) -> str:
     minutes, secs = divmod(int(seconds), 60)
     return f"{minutes} 分 {secs:02d} 秒" if minutes else f"{secs} 秒"
 
