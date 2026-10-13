@@ -111,7 +111,9 @@ ingest_slides ────────────────┴─► outline 
 5. PPTX 课件：用 LibreOffice 转成 PDF 后走同一流程
 6. CLI 功能与设计更新确认，并把取消、进度等逻辑收拢到 `service.py`
 7. 轻量桌面 GUI：PySide6 原生窗口，不使用浏览器或网页视图
-8. Nextcloud 插件，兼作会议转写：提示词与输出模板按"课堂 / 会议"场景切换
+8. Nextcloud 插件
+
+v1 的 M7 完成后另开 `meeting` 分支，让 dehydrater 也能把带 PPT 的会议整理成纪要：提示词与输出模板按"课堂 / 会议"场景切换，增加决议与待办、发言人。详见 [plan-meeting.md](plan-meeting.md)。
 
 版本号在 `pyproject.toml` 中手动维护；开发在 `dev` 分支进行。
 
